@@ -13,12 +13,12 @@ virt-customize -a "$VM_IMAGE" \
   --install vim,git,bash-completion,python \
   --run-command 'useradd -m -G wheel -s /bin/bash user' \
   --run-command 'mkdir -p /etc/systemd/system/getty@tty1.service.d/' \
-  --copy-in login-controls/autologin.conf:'/etc/systemd/system/getty@tty1.service.d/autologin.conf' \
+  --copy-in login-controls/autologin.conf:'/etc/systemd/system/getty@tty1.service.d/' \
   --run-command 'mkdir -p /etc/sudoers.d/' \
-  --copy-in login-controls/user:/etc/sudoers.d/user \
+  --copy-in login-controls/user:/etc/sudoers.d/ \
   --run-command 'mkdir -p /opt/pycomms/' \
-  --copy-in pycomms/pycomms_server.py:/opt/pycomms/pycomms_server.py \
-  --copy-in pycomms/pycomms-server.service:/etc/systemd/system/pycomms-server.service \
+  --copy-in pycomms/pycomms_server.py:/opt/pycomms/ \
+  --copy-in pycomms/pycomms-server.service:/etc/systemd/system/ \
   --run-command 'systemctl enable pycomms-server.service' \
   --run-command 'echo done'
 
