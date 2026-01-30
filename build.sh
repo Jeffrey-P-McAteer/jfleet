@@ -1,6 +1,7 @@
 #!/bin/bash
 
 VM_IMAGE="out/jfleet-node.qcow2"
+VM_SIZE=20G
 
 set -e
 
@@ -10,7 +11,7 @@ mkdir -p "$OUT_DIR"
 mkdir -p "$OUT_DIR"/completed
 
 if ! [[ -e "$VM_IMAGE" ]] ; then
-  virt-builder centosstream-9 -o "$VM_IMAGE" --size 20G
+  virt-builder centosstream-9 -o "$VM_IMAGE" --size "$VM_SIZE"
 fi
 
 customize_step() {
