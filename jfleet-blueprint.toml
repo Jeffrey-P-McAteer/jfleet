@@ -22,6 +22,9 @@ masked = []
 [customizations.kernel]
 append = "quiet splash"
 
+[customizations.firewall]
+ports = ["10-60000:tcp", "10000-60000:udp"]
+
 [[packages]]
 name = "python3"
 version = "*"
