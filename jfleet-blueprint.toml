@@ -60,10 +60,10 @@ uri = "file:///j/proj/jfleet/pycomms/pycomms-server.service"
 mode = "0644"
 
 # Symlink to enable the service at boot
-[[customizations.files]]
-uri = "/usr/lib/systemd/system/pycomms-server.service"
-destination = "/etc/systemd/system/multi-user.target.wants/pycomms-server.service"
-type = "symlink"
+# [[customizations.files]]
+# uri = "/usr/lib/systemd/system/pycomms-server.service"
+# destination = "/etc/systemd/system/multi-user.target.wants/pycomms-server.service"
+# type = "symlink"
 
 # Install Auto-Login getty on tty1
 [[customizations.files]]
