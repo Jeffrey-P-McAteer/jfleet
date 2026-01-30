@@ -1,0 +1,11 @@
+[Unit]
+Description=Py Comms Multicast Server
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 /opt/pycomms/pycomms_server.py
+Restart=always
+User=user
+
+[Install]
+WantedBy=multi-user.target
