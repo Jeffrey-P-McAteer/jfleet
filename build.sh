@@ -35,6 +35,24 @@ customize_step() {
   fi
 }
 
+customize_step rebuild-inits \
+  --install kernel-core,kernel-modules,kernel-modules-extra \
+  --run-command 'dnf -y install kernel-core kernel-modules kernel-modules-extra' \
+  --run-command '
+for kver in /lib/modules/*; do
+    kvername=$(basename $kver)
+    echo "Building initramfs for kernel $kvername"
+    dracut --force /boot/initramfs-$kvername.img $kvername
+done
+' \
+  --run-command 'grub2-mkconfig -o /boot/grub2/grub.cfg' \
+  --run-command 'systemd-machine-id-setup' \
+  --run-command 'sync'
+
+customize_step systemd-fixes \
+  --selinux-relabel \
+  --run-command 'sync'
+
 customize_step install-packages --install vim,git,bash-completion,python
 
 customize_step create-user \
@@ -49,7 +67,6 @@ customize_step setup-pycomms \
   --copy-in pycomms/pycomms_server.py:/opt/pycomms/ \
   --copy-in pycomms/pycomms-server.service:/etc/systemd/system/ \
   --run-command 'systemctl enable pycomms-server.service' \
-
 
 virt-customize -a "$VM_IMAGE" --run-command 'echo my hostname is $(hostname)'
 
