@@ -10,8 +10,18 @@ OUT_DIR=$(dirname "$VM_IMAGE")
 mkdir -p "$OUT_DIR"
 mkdir -p "$OUT_DIR"/completed
 
+VM_IMG_EXT="${VM_IMAGE##*.}"
+
+VM_IMG_FMT=raw
+if [[ "$VM_IMG_EXT" = "qcow2" ]] ; then
+  VM_IMG_FMT=qcow2
+fi
+
 if ! [[ -e "$VM_IMAGE" ]] ; then
-  virt-builder centosstream-9 -o "$VM_IMAGE" --size "$VM_SIZE"
+  echo virt-builder centosstream-9 -o "$VM_IMAGE" --format "$VM_IMG_FMT" --size "$VM_SIZE"
+  virt-builder centosstream-9 -o "$VM_IMAGE" --format "$VM_IMG_FMT" --size "$VM_SIZE"
+else
+  echo "$VM_IMAGE exists, skipping virt-builder"
 fi
 
 customize_step() {
@@ -20,7 +30,7 @@ customize_step() {
   if [[ -e "$FLAG_FILE" ]] ; then
     echo "Step $STEP_NAME completed, skipping."
   else
-    virt-customize -a "$VM_IMAGE" "${@:2}"
+    virt-customize --format "$VM_IMG_FMT" -a "$VM_IMAGE" "${@:2}"
     touch "$FLAG_FILE"
   fi
 }
