@@ -1,6 +1,8 @@
 name = "jfleet"
 description = "Native Arch-hosted osbuild demo"
 version = "0.0.1"
+distro = "centos-9"
+arch = "x86_64"
 
 customizations.hostname = "jfleet-node"
 
