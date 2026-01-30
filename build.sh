@@ -36,16 +36,6 @@ customize_step() {
 }
 
 customize_step rebuild-inits \
-  --install kernel-core,kernel-modules,kernel-modules-extra \
-  --run-command 'dnf -y install kernel-core kernel-modules kernel-modules-extra' \
-  --run-command '
-for kver in /lib/modules/*; do
-    kvername=$(basename $kver)
-    echo "Building initramfs for kernel $kvername"
-    dracut --force /boot/initramfs-$kvername.img $kvername
-done
-' \
-  --run-command 'grub2-mkconfig -o /boot/grub2/grub.cfg' \
   --run-command 'systemd-machine-id-setup' \
   --run-command 'sync'
 
