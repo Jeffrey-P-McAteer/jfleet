@@ -35,11 +35,8 @@ customize_step() {
   fi
 }
 
-customize_step rebuild-inits \
+customize_step systemd-adjustments \
   --run-command 'systemd-machine-id-setup' \
-  --run-command 'sync'
-
-customize_step systemd-fixes \
   --selinux-relabel \
   --run-command 'sync'
 

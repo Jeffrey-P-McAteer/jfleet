@@ -21,6 +21,7 @@ echo "$VM_IMAGE is assumed to be in $VM_IMG_FMT format."
 
 sudo qemu-system-x86_64 \
   -enable-kvm \
+  -machine q35 \
   -cpu host \
   -m 8G \
   -drive file="$VM_IMAGE",if=virtio,format="$VM_IMG_FMT" \
