@@ -29,6 +29,7 @@ if ! [[ -e "$VM_IMAGE" ]] ; then
     -o "$VM_IMAGE" \
     --format "$VM_IMG_FMT" \
     --hostname "jfleet-node" \
+    --root-password disabled \
     --cache "$OUT_DIR"/cache \
     --size "$VM_SIZE"
 else
