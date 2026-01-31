@@ -8,7 +8,7 @@ set -e
 
 OUT_DIR=$(dirname "$VM_IMAGE")
 
-if [[ "$1" = "clean" ]] ; then
+if [[ "$1" = "clean" ]] || [[ "$2" = "clean" ]] || [[ "$3" = "clean" ]] ; then
   if [[ -e "$OUT_DIR"/completed ]] ; then
     rm -rf "$OUT_DIR"/completed
   fi
@@ -67,6 +67,7 @@ customize_step install-packages --install vim,git,bash-completion,python
 
 customize_step create-user \
   --run-command 'useradd -m -G wheel -s /bin/bash user' \
+  --run-command "echo 'user:Passw0rd!' | chpasswd" \
   --run-command 'mkdir -p /etc/systemd/system/getty@tty1.service.d/' \
   --copy-in login-controls/autologin.conf:'/etc/systemd/system/getty@tty1.service.d/' \
   --run-command 'mkdir -p /etc/sudoers.d/' \
@@ -80,3 +81,7 @@ customize_step setup-pycomms \
 
 virt-customize -a "$VM_IMAGE" --run-command 'echo my hostname is $(hostname)'
 
+
+if [[ "$1" = "run" ]] || [[ "$2" = "run" ]] || [[ "$3" = "run" ]] ; then
+  ./run.sh"$VM_IMAGE"
+fi
