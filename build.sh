@@ -2,6 +2,7 @@
 
 VM_IMAGE="out/jfleet-node.qcow2"
 VM_SIZE=20G
+BASE_IMG_NAME=centosstream-9
 
 set -e
 
@@ -9,6 +10,7 @@ OUT_DIR=$(dirname "$VM_IMAGE")
 
 mkdir -p "$OUT_DIR"
 mkdir -p "$OUT_DIR"/completed
+mkdir -p "$OUT_DIR"/cache
 
 VM_IMG_EXT="${VM_IMAGE##*.}"
 
@@ -17,9 +19,18 @@ if [[ "$VM_IMG_EXT" = "qcow2" ]] ; then
   VM_IMG_FMT=qcow2
 fi
 
+print_and_run() {
+  echo "${@:1}"
+  "${@:1}"
+}
+
 if ! [[ -e "$VM_IMAGE" ]] ; then
-  echo virt-builder centosstream-9 -o "$VM_IMAGE" --format "$VM_IMG_FMT" --size "$VM_SIZE"
-  virt-builder centosstream-9 -o "$VM_IMAGE" --format "$VM_IMG_FMT" --size "$VM_SIZE"
+  print_and_run virt-builder $BASE_IMG_NAME \
+    -o "$VM_IMAGE" \
+    --format "$VM_IMG_FMT" \
+    --hostname "jfleet-node" \
+    --cache "$OUT_DIR"/cache \
+    --size "$VM_SIZE"
 else
   echo "$VM_IMAGE exists, skipping virt-builder"
 fi
@@ -30,14 +41,13 @@ customize_step() {
   if [[ -e "$FLAG_FILE" ]] ; then
     echo "Step $STEP_NAME completed, skipping."
   else
-    virt-customize --format "$VM_IMG_FMT" -a "$VM_IMAGE" "${@:2}"
+    print_and_run virt-customize --format "$VM_IMG_FMT" -a "$VM_IMAGE" "${@:2}"
     touch "$FLAG_FILE"
   fi
 }
 
 customize_step systemd-adjustments \
   --run-command 'systemd-machine-id-setup' \
-  --selinux-relabel \
   --run-command 'sync'
 
 customize_step install-packages --install vim,git,bash-completion,python

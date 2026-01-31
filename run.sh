@@ -30,5 +30,3 @@ sudo qemu-system-x86_64 \
   -nographic -no-reboot
 
 
-
-
