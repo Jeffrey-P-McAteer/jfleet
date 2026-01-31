@@ -35,9 +35,7 @@ sudo qemu-system-x86_64 \
   -cpu Skylake-Client-v4 \
   -m 8G \
   \
-  -device ich9-ahci,id=sata \
-  -drive file="$VM_IMAGE",if=none,id=disk0,format="$VM_IMG_FMT",cache=unsafe \
-  -device ide-hd,drive=disk0,bus=sata.0 \
+  -drive file="$VM_IMAGE",if=ide,id=disk0,format="$VM_IMG_FMT",cache=unsafe \
   \
   -netdev tap,id=net0,ifname=macvtap0,script=no,downscript=no \
   -device e1000,netdev=net0 \
