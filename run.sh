@@ -17,17 +17,10 @@ if [[ "$VM_IMG_EXT" = "qcow2" ]] ; then
 fi
 echo "$VM_IMAGE is assumed to be in $VM_IMG_FMT format."
 
-# Ctrl+A - X to kill vm
+sudo ip link add link wlan0 name macvtap0 type macvtap mode bridge || true
+sudo ip link set macvtap0 up || true
 
-# sudo qemu-system-x86_64 \
-#   -enable-kvm \
-#   -machine q35 \
-#   -cpu Skylake-Client-v4 \
-#   -m 8G \
-#   -drive file="$VM_IMAGE",if=virtio,format="$VM_IMG_FMT",cache=unsafe \
-#   -netdev tap,id=net0,ifname=macvtap0,script=no,downscript=no \
-#   -device virtio-net-pci,netdev=net0 \
-#   -nographic -no-reboot
+# Ctrl+A - X to kill vm
 
 sudo qemu-system-x86_64 \
   -enable-kvm \

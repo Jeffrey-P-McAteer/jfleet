@@ -70,18 +70,24 @@ customize_step create-user \
   --run-command "echo 'user:Passw0rd!' | chpasswd" \
   --run-command 'mkdir -p /etc/systemd/system/getty@tty1.service.d/' \
   --copy-in login-controls/autologin.conf:'/etc/systemd/system/getty@tty1.service.d/' \
+  --run-command 'chown -R root:root /etc/systemd/system/getty@tty1.service.d/' \
   --run-command 'mkdir -p /etc/sudoers.d/' \
-  --copy-in login-controls/user:/etc/sudoers.d/
+  --copy-in login-controls/user:/etc/sudoers.d/ \
+  --run-command 'chown -R root:root /etc/sudoers.d/' \
 
 customize_step setup-pycomms \
   --run-command 'mkdir -p /opt/pycomms/' \
   --copy-in pycomms/pycomms_server.py:/opt/pycomms/ \
   --copy-in pycomms/pycomms-server.service:/etc/systemd/system/ \
+  --run-command 'chown -R root:root /etc/systemd/system/' \
   --run-command 'systemctl enable pycomms-server.service' \
 
-virt-customize -a "$VM_IMAGE" --run-command 'echo my hostname is $(hostname)'
+
+
+
+
 
 
 if [[ "$1" = "run" ]] || [[ "$2" = "run" ]] || [[ "$3" = "run" ]] ; then
-  ./run.sh"$VM_IMAGE"
+  ./run.sh "$VM_IMAGE"
 fi
