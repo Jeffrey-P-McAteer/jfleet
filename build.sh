@@ -9,8 +9,12 @@ set -e
 OUT_DIR=$(dirname "$VM_IMAGE")
 
 if [[ "$1" = "clean" ]] ; then
-  rm -rf "$OUT_DIR"/completed
-  rm "$VM_IMAGE"
+  if [[ -e "$OUT_DIR"/completed ]] ; then
+    rm -rf "$OUT_DIR"/completed
+  fi
+  if [[ -e "$VM_IMAGE" ]] ; then
+    rm "$VM_IMAGE"
+  fi
 fi
 
 mkdir -p "$OUT_DIR"
@@ -54,19 +58,17 @@ customize_step() {
 
 customize_step systemd-adjustments \
   --run-command 'systemd-machine-id-setup' \
+  --run-command 'dnf --noplugins remove -y -q subscription-manager dnf-plugin-subscription-manager' \
+  --run-command 'printf "SELINUX=disabled\nSELINUXTYPE=targeted\n" > /etc/selinux/config' \
+  --run-command 'rm -f /.autorelabel /etc/selinux/.autorelabel || true' \
   --run-command 'sync'
 
 customize_step install-packages --install vim,git,bash-completion,python
 
-# customize_step create-user \
-#   --run-command 'useradd -m -G wheel -s /bin/bash user' \
-#   --run-command 'mkdir -p /etc/systemd/system/getty@tty1.service.d/' \
-#   --copy-in login-controls/autologin.conf:'/etc/systemd/system/getty@tty1.service.d/' \
-#   --run-command 'mkdir -p /etc/sudoers.d/' \
-#   --copy-in login-controls/user:/etc/sudoers.d/
-
 customize_step create-user \
   --run-command 'useradd -m -G wheel -s /bin/bash user' \
+  --run-command 'mkdir -p /etc/systemd/system/getty@tty1.service.d/' \
+  --copy-in login-controls/autologin.conf:'/etc/systemd/system/getty@tty1.service.d/' \
   --run-command 'mkdir -p /etc/sudoers.d/' \
   --copy-in login-controls/user:/etc/sudoers.d/
 
