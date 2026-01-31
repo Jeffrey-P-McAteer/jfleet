@@ -17,9 +17,6 @@ if [[ "$VM_IMG_EXT" = "qcow2" ]] ; then
 fi
 echo "$VM_IMAGE is assumed to be in $VM_IMG_FMT format."
 
-sudo ip link add link wlan0 name macvtap0 type macvtap mode bridge || true
-sudo ip link set macvtap0 up || true
-
 # Ctrl+A - X to kill vm
 
 sudo qemu-system-x86_64 \
@@ -30,7 +27,7 @@ sudo qemu-system-x86_64 \
   \
   -drive file="$VM_IMAGE",if=ide,id=disk0,format="$VM_IMG_FMT",cache=unsafe \
   \
-  -netdev tap,id=net0,ifname=macvtap0,script=no,downscript=no \
+  -netdev user,id=net0 \
   -device e1000,netdev=net0 \
   \
   -nographic -no-reboot

@@ -68,9 +68,18 @@ customize_step install-packages --install vim,git,bash-completion,python
 customize_step create-user \
   --run-command 'useradd -m -G wheel -s /bin/bash user' \
   --run-command "echo 'user:Passw0rd!' | chpasswd" \
+  \
   --run-command 'mkdir -p /etc/systemd/system/getty@tty1.service.d/' \
   --copy-in login-controls/autologin.conf:'/etc/systemd/system/getty@tty1.service.d/' \
   --run-command 'chown -R root:root /etc/systemd/system/getty@tty1.service.d/' \
+  --run-command 'chmod 644 /etc/systemd/system/getty@tty1.service.d/autologin.conf' \
+  \
+  --run-command 'mkdir -p /etc/systemd/system/getty@ttyS0.service.d/' \
+  --copy-in login-controls/autologin.conf:'/etc/systemd/system/getty@ttyS0.service.d/' \
+  --run-command 'chown -R root:root /etc/systemd/system/getty@ttyS0.service.d/' \
+  --run-command 'chmod 644 /etc/systemd/system/getty@ttyS0.service.d/autologin.conf' \
+  \
+  --run-command 'systemctl daemon-reload' \
   --run-command 'mkdir -p /etc/sudoers.d/' \
   --copy-in login-controls/user:/etc/sudoers.d/ \
   --run-command 'chown -R root:root /etc/sudoers.d/' \
