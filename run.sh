@@ -17,6 +17,8 @@ if [[ "$VM_IMG_EXT" = "qcow2" ]] ; then
 fi
 echo "$VM_IMAGE is assumed to be in $VM_IMG_FMT format."
 
+./configure-host-network-for-vm.sh
+
 # Ctrl+A - X to kill vm
 
 sudo qemu-system-x86_64 \
