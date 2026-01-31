@@ -74,10 +74,10 @@ customize_step create-user \
   --run-command 'chown -R root:root /etc/systemd/system/getty@tty1.service.d/' \
   --run-command 'chmod 644 /etc/systemd/system/getty@tty1.service.d/autologin.conf' \
   \
-  --run-command 'mkdir -p /etc/systemd/system/getty@ttyS0.service.d/' \
-  --copy-in login-controls/autologin.conf:'/etc/systemd/system/getty@ttyS0.service.d/' \
-  --run-command 'chown -R root:root /etc/systemd/system/getty@ttyS0.service.d/' \
-  --run-command 'chmod 644 /etc/systemd/system/getty@ttyS0.service.d/autologin.conf' \
+  --run-command 'mkdir -p /etc/systemd/system/serial-getty@ttyS0.service.d/' \
+  --copy-in login-controls/autologin.conf:'/etc/systemd/system/serial-getty@ttyS0.service.d/' \
+  --run-command 'chown -R root:root /etc/systemd/system/serial-getty@ttyS0.service.d/' \
+  --run-command 'chmod 644 /etc/systemd/system/serial-getty@ttyS0.service.d/autologin.conf' \
   \
   --run-command 'systemctl daemon-reload' \
   --run-command 'mkdir -p /etc/sudoers.d/' \
@@ -93,10 +93,18 @@ customize_step setup-pycomms \
 
 
 
-
-
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
 
 if [[ "$1" = "run" ]] || [[ "$2" = "run" ]] || [[ "$3" = "run" ]] ; then
   ./run.sh "$VM_IMAGE"
 fi
+
+
+
+
+
