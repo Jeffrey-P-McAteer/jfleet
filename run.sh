@@ -31,11 +31,16 @@ echo "$VM_IMAGE is assumed to be in $VM_IMG_FMT format."
 
 sudo qemu-system-x86_64 \
   -enable-kvm \
-  -machine q35 \
+  -machine q35,accel=kvm \
   -cpu Skylake-Client-v4 \
   -m 8G \
-  -drive file="$VM_IMAGE",if=virtio,format="$VM_IMG_FMT",cache=unsafe \
+  \
+  -device ich9-ahci,id=sata \
+  -drive file="$VM_IMAGE",if=none,id=disk0,format="$VM_IMG_FMT",cache=unsafe \
+  -device ide-hd,drive=disk0,bus=sata.0 \
+  \
   -netdev tap,id=net0,ifname=macvtap0,script=no,downscript=no \
-  -device virtio-net-pci,netdev=net0 \
+  -device e1000,netdev=net0 \
+  \
   -nographic -no-reboot
 

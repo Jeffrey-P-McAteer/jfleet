@@ -8,6 +8,11 @@ set -e
 
 OUT_DIR=$(dirname "$VM_IMAGE")
 
+if [[ "$1" = "clean" ]] ; then
+  rm -rf "$OUT_DIR"/completed
+  rm "$VM_IMAGE"
+fi
+
 mkdir -p "$OUT_DIR"
 mkdir -p "$OUT_DIR"/completed
 mkdir -p "$OUT_DIR"/cache
@@ -53,10 +58,15 @@ customize_step systemd-adjustments \
 
 customize_step install-packages --install vim,git,bash-completion,python
 
+# customize_step create-user \
+#   --run-command 'useradd -m -G wheel -s /bin/bash user' \
+#   --run-command 'mkdir -p /etc/systemd/system/getty@tty1.service.d/' \
+#   --copy-in login-controls/autologin.conf:'/etc/systemd/system/getty@tty1.service.d/' \
+#   --run-command 'mkdir -p /etc/sudoers.d/' \
+#   --copy-in login-controls/user:/etc/sudoers.d/
+
 customize_step create-user \
   --run-command 'useradd -m -G wheel -s /bin/bash user' \
-  --run-command 'mkdir -p /etc/systemd/system/getty@tty1.service.d/' \
-  --copy-in login-controls/autologin.conf:'/etc/systemd/system/getty@tty1.service.d/' \
   --run-command 'mkdir -p /etc/sudoers.d/' \
   --copy-in login-controls/user:/etc/sudoers.d/
 
