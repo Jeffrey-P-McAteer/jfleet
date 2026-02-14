@@ -13,6 +13,12 @@ virt-builder --list
 ./build.sh
 ```
 
+# Testing the Images
+
+```bash
+./run.sh ./out/jfleet-node.qcow2
+
+```
 
 # Docs
 
