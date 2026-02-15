@@ -617,7 +617,7 @@ LABEL local
         cmd = [
             'qemu-nbd',
             '--persistent',
-            '--shared=8',
+            '--shared=1',
             '-f', 'qcow2',
             str(self.qcow2_path),
             '--bind', self.server_ip,
