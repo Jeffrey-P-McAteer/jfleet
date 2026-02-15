@@ -139,6 +139,17 @@ customize_step setup-pycomms \
   --run-command 'chown -R root:root /etc/systemd/system/' \
   --run-command 'systemctl enable pycomms-server.service' \
 
+customize_step setup-nbd \
+  --run-command 'echo "nbd" | sudo tee /etc/modules-load.d/nbd.conf' \
+  --run-command 'echo "add_drivers+=\" nbd \"" > /etc/dracut.conf.d/nbd.conf' \
+  --run-command 'echo "add_dracutmodules+=\" network nbd \"" >> /etc/dracut.conf.d/nbd.conf' \
+  --run-command 'for kver in $(rpm -q kernel --qf "%{VERSION}-%{RELEASE}.%{ARCH}\\n"); do dracut --force --add "network nbd" /boot/initramfs-${kver}.img ${kver}; done' \
+
+
+
+
+
+
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
