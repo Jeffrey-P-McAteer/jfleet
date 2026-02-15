@@ -154,8 +154,8 @@ class DHCPServer:
         # Seconds elapsed
         packet[8:10] = b'\x00\x00'
 
-        # Flags - Set broadcast flag for PXE compatibility
-        packet[10:12] = b'\x80\x00'  # Broadcast bit set
+        # Flags - Don't force broadcast for UEFI, let client decide
+        packet[10:12] = b'\x00\x00'
 
         # Client IP (ciaddr) - empty for DISCOVER
         packet[12:16] = b'\x00' * 4
@@ -207,13 +207,18 @@ class DHCPServer:
         # Option 6: DNS Server
         options.extend([6, 4] + list(socket.inet_aton(self.server_ip)))
 
-        # Option 60: Vendor Class Identifier - Must match "PXEClient"
-        vendor_class = b"PXEClient"
-        options.extend([60, len(vendor_class)] + list(vendor_class))
+        # Don't send Option 60 - that's for clients to identify themselves
+        # Server responding with it confuses some clients
 
-        # Option 43: Vendor-Specific Information (PXE Magic)
-        # Sub-option 6: PXE Discovery Control - 0x08 = use boot server list
-        pxe_vendor_options = bytearray([6, 1, 0x08])
+        # Option 43: Vendor-Specific Information (PXE)
+        # For UEFI, this should be minimal or match what client expects
+        # PXE Discovery Control: bits mean different things
+        # Bit 0: disable broadcast discovery
+        # Bit 1: disable multicast discovery
+        # Bit 2: only accept servers in boot server list
+        # Bit 3: download boot file from server
+        # 0x0A = bits 1 and 3 set
+        pxe_vendor_options = bytearray([6, 1, 0x0A])
         options.extend([43, len(pxe_vendor_options)] + list(pxe_vendor_options))
 
         # Option 66: TFTP Server Name (use IP as string for compatibility)
@@ -288,13 +293,23 @@ class DHCPServer:
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
 
+        # Bind to specific interface to ensure we send/receive on correct network
+        import struct
+        self.sock.setsockopt(
+            socket.SOL_SOCKET,
+            25,  # SO_BINDTODEVICE
+            struct.pack('256s', self.interface.encode('utf-8')[:15])
+        )
+
         try:
-            self.sock.bind(('', self.DHCP_SERVER_PORT))
+            # Bind to INADDR_ANY to receive broadcasts
+            self.sock.bind(('0.0.0.0', self.DHCP_SERVER_PORT))
         except PermissionError:
             logger.error("Permission denied binding to port 67. Run as root!")
             return
 
         logger.info(f"DHCP server started on port {self.DHCP_SERVER_PORT}")
+        logger.info(f"Bound to interface: {self.interface}")
 
         while self.running:
             try:
@@ -314,24 +329,24 @@ class DHCPServer:
                     logger.info(f"DHCP DISCOVER from {mac_str}")
                     if vendor:
                         logger.info(f"  Vendor Class: {vendor}")
+
+                    # Only respond to PXE clients
+                    is_pxe = vendor and 'PXEClient' in vendor
+                    if not is_pxe:
+                        logger.info(f"  Not a PXE client - ignoring")
+                        continue
+
                     if client_arch is not None:
                         logger.info(f"  Client Architecture: {client_arch} ({self._get_arch_name(client_arch)})")
 
                     # Determine bootloader based on architecture
-                    # Arch 0x0000 = BIOS/legacy
-                    # Arch 0x0007 = EFI BC (x64)
-                    # Arch 0x0009 = EFI x64
-                    # Arch 0x0006 = EFI IA32
                     bootfile = self._get_bootfile_for_arch(client_arch)
                     logger.info(f"  Selected bootloader: {bootfile}")
-
-                    # Check if this is a PXE client
-                    is_pxe = vendor and 'PXEClient' in vendor
 
                     # Check if client already has an IP (ProxyDHCP mode)
                     client_has_ip = data[12:16] != b'\x00\x00\x00\x00'  # ciaddr field
 
-                    if is_pxe and client_has_ip:
+                    if client_has_ip:
                         # ProxyDHCP mode - client wants boot info only, not IP
                         logger.info(f"  ProxyDHCP mode detected - client already has IP")
                         client_ip = socket.inet_ntoa(data[12:16])
@@ -349,24 +364,37 @@ class DHCPServer:
                         bootfile
                     )
 
-                    self.sock.sendto(response, ('<broadcast>', self.DHCP_CLIENT_PORT))
-                    logger.info(f"DHCP OFFER sent to {mac_str}: {client_ip}")
-                    logger.info(f"  Next server: {self.server_ip}")
-                    logger.info(f"  Boot file: {bootfile}")
+                    try:
+                        bytes_sent = self.sock.sendto(response, ('<broadcast>', self.DHCP_CLIENT_PORT))
+                        logger.info(f"DHCP OFFER sent to {mac_str}: {client_ip} ({bytes_sent} bytes)")
+                        logger.info(f"  Next server: {self.server_ip}")
+                        logger.info(f"  Boot file: {bootfile}")
+                    except Exception as send_error:
+                        logger.error(f"Failed to send DHCP OFFER: {send_error}")
+                        import traceback
+                        traceback.print_exc()
 
                 elif parsed['msg_type'] == self.DHCPREQUEST:
                     logger.info(f"DHCP REQUEST from {mac_str}")
                     client_ip = self._allocate_ip(client_mac)
 
+                    # Get architecture for bootfile
+                    client_arch = parsed.get('client_arch')
+                    bootfile = self._get_bootfile_for_arch(client_arch)
+
                     response = self._build_dhcp_packet(
                         parsed['transaction_id'],
                         client_mac,
                         client_ip,
-                        self.DHCPACK
+                        self.DHCPACK,
+                        bootfile
                     )
 
-                    self.sock.sendto(response, ('<broadcast>', self.DHCP_CLIENT_PORT))
-                    logger.info(f"DHCP ACK sent to {mac_str}: {client_ip}")
+                    try:
+                        bytes_sent = self.sock.sendto(response, ('<broadcast>', self.DHCP_CLIENT_PORT))
+                        logger.info(f"DHCP ACK sent to {mac_str}: {client_ip} ({bytes_sent} bytes)")
+                    except Exception as send_error:
+                        logger.error(f"Failed to send DHCP ACK: {send_error}")
 
             except Exception as e:
                 if self.running:
