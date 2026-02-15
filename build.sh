@@ -157,19 +157,60 @@ customize_step setup-nbd \
   --run-command 'echo "kernel_cmdline+=\" rd.neednet=1 rd.debug \"" >> /etc/dracut.conf.d/90-nbd.conf' \
   --run-command 'mkdir -p /usr/lib/dracut/hooks/pre-mount' \
   --write '/usr/lib/dracut/hooks/pre-mount/30-nbd-mount.sh:#!/bin/sh
+# NBD root mount hook for dracut
+# Load dracut command line library
+type getarg >/dev/null 2>&1 || . /lib/dracut-lib.sh
+
+# Parse nbdroot from kernel cmdline
+nbdroot=$(getarg nbdroot=)
+
+if [ -z "$nbdroot" ]; then
+    # Also check /proc/cmdline directly as fallback
+    for param in $(cat /proc/cmdline); do
+        case "$param" in
+            nbdroot=*)
+                nbdroot="${param#nbdroot=}"
+                break
+                ;;
+        esac
+    done
+fi
+
 if [ -n "$nbdroot" ]; then
     server="${nbdroot%:*}"
     port="${nbdroot##*:}"
 
-    echo "NBD: Connecting to $server:$port"
+    echo "NBD: Connecting to $server:$port" >> /dev/kmsg
+
+    # Load NBD module
     modprobe nbd max_part=16
     sleep 2
 
-    # Use nbd-client to connect
-    nbd-client "$server" "$port" /dev/nbd0 -persist
-    sleep 2
+    # Wait for network to be up
+    i=0
+    while [ $i -lt 30 ]; do
+        if ip route | grep -q default; then
+            echo "NBD: Network is up" >> /dev/kmsg
+            break
+        fi
+        sleep 1
+        i=$((i + 1))
+    done
 
-    echo "NBD: Connected to /dev/nbd0"
+    # Use nbd-client to connect
+    echo "NBD: Running nbd-client $server $port /dev/nbd0" >> /dev/kmsg
+    nbd-client "$server" "$port" /dev/nbd0 -persist
+
+    sleep 3
+
+    if [ -b /dev/nbd0 ]; then
+        echo "NBD: /dev/nbd0 is available" >> /dev/kmsg
+        ls -l /dev/nbd0 >> /dev/kmsg 2>&1
+    else
+        echo "NBD: ERROR - /dev/nbd0 not found!" >> /dev/kmsg
+    fi
+else
+    echo "NBD: No nbdroot parameter found in cmdline" >> /dev/kmsg
 fi
 ' \
     --chmod '0755:/usr/lib/dracut/hooks/pre-mount/30-nbd-mount.sh' \
