@@ -16,6 +16,7 @@ Usage:
 Example:
     sudo uv run network-boot-server.py eth0 ./out/jfleet-node.qcow2
 """
+
 import sys
 import os
 import time
@@ -63,16 +64,16 @@ logger = logging.getLogger('PXEBootServer')
 
 class DHCPServer:
     """Simple DHCP server with PXE support"""
-
+    
     DHCP_SERVER_PORT = 67
     DHCP_CLIENT_PORT = 68
-
+    
     # DHCP Message Types
     DHCPDISCOVER = 1
     DHCPOFFER = 2
     DHCPREQUEST = 3
     DHCPACK = 5
-
+    
     def __init__(self, interface, server_ip, range_start, range_end, netmask):
         self.interface = interface
         self.server_ip = server_ip
@@ -83,117 +84,117 @@ class DHCPServer:
         self.next_ip = self._ip_to_int(range_start)
         self.running = False
         self.sock = None
-
+        
     def _ip_to_int(self, ip):
         """Convert IP address string to integer"""
         return struct.unpack("!I", socket.inet_aton(ip))[0]
-
+    
     def _int_to_ip(self, num):
         """Convert integer to IP address string"""
         return socket.inet_ntoa(struct.pack("!I", num))
-
+    
     def _allocate_ip(self, mac):
         """Allocate an IP address for a MAC address"""
         if mac in self.lease_pool:
             return self.lease_pool[mac]
-
+        
         ip = self._int_to_ip(self.next_ip)
         self.lease_pool[mac] = ip
         self.next_ip += 1
-
+        
         # Wrap around if we exceed the range
         if self.next_ip > self._ip_to_int(self.range_end):
             self.next_ip = self._ip_to_int(self.range_start)
-
+        
         return ip
-
+    
     def _build_dhcp_packet(self, transaction_id, client_mac, client_ip, msg_type):
         """Build a DHCP packet"""
         packet = bytearray(300)
-
+        
         # BOOTP header
         packet[0] = 2  # Boot Reply
         packet[1] = 1  # Ethernet
         packet[2] = 6  # Hardware address length
         packet[3] = 0  # Hops
-
+        
         # Transaction ID
         packet[4:8] = transaction_id
-
+        
         # Seconds and flags
         packet[8:12] = b'\x00' * 4
-
+        
         # Client IP (ciaddr) - empty for DISCOVER
         packet[12:16] = b'\x00' * 4
-
+        
         # Your IP (yiaddr) - the offered IP
         packet[16:20] = socket.inet_aton(client_ip)
-
+        
         # Server IP (siaddr)
         packet[20:24] = socket.inet_aton(self.server_ip)
-
+        
         # Gateway IP (giaddr)
         packet[24:28] = b'\x00' * 4
-
+        
         # Client MAC address
         packet[28:34] = client_mac
         packet[34:44] = b'\x00' * 10  # Padding
-
+        
         # Server name and boot file
         packet[44:108] = b'\x00' * 64
         packet[108:236] = b'\x00' * 128
-
+        
         # Magic cookie
         packet[236:240] = bytes([99, 130, 83, 99])
-
+        
         # DHCP options
         options = bytearray()
-
+        
         # Option 53: DHCP Message Type
         options.extend([53, 1, msg_type])
-
+        
         # Option 54: DHCP Server Identifier
         options.extend([54, 4] + list(socket.inet_aton(self.server_ip)))
-
+        
         # Option 51: IP Address Lease Time (1 hour)
         options.extend([51, 4, 0, 0, 14, 16])
-
+        
         # Option 1: Subnet Mask
         options.extend([1, 4] + list(socket.inet_aton(self.netmask)))
-
+        
         # Option 3: Router
         options.extend([3, 4] + list(socket.inet_aton(self.server_ip)))
-
+        
         # Option 6: DNS Server
         options.extend([6, 4] + list(socket.inet_aton(self.server_ip)))
-
+        
         # PXE Options
         # Option 66: TFTP Server Name
         options.extend([66, 4] + list(socket.inet_aton(self.server_ip)))
-
+        
         # Option 67: Bootfile Name
         bootfile = b"lpxelinux.0"
         options.extend([67, len(bootfile)] + list(bootfile))
-
+        
         # End option
         options.append(255)
-
+        
         packet[240:240+len(options)] = options
-
+        
         return bytes(packet[:240+len(options)])
-
+    
     def _parse_dhcp_packet(self, data):
         """Parse incoming DHCP packet"""
         if len(data) < 240:
             return None
-
+        
         # Check magic cookie
         if data[236:240] != bytes([99, 130, 83, 99]):
             return None
-
+        
         transaction_id = data[4:8]
         client_mac = data[28:34]
-
+        
         # Parse options to find message type
         msg_type = None
         i = 240
@@ -204,77 +205,77 @@ class DHCPServer:
             if option == 0:  # Pad option
                 i += 1
                 continue
-
+            
             option_len = data[i + 1]
             if option == 53:  # DHCP Message Type
                 msg_type = data[i + 2]
-
+            
             i += 2 + option_len
-
+        
         return {
             'transaction_id': transaction_id,
             'client_mac': client_mac,
             'msg_type': msg_type
         }
-
+    
     def start(self):
         """Start the DHCP server"""
         self.running = True
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-
+        
         try:
             self.sock.bind(('', self.DHCP_SERVER_PORT))
         except PermissionError:
             logger.error("Permission denied binding to port 67. Run as root!")
             return
-
+        
         logger.info(f"DHCP server started on port {self.DHCP_SERVER_PORT}")
-
+        
         while self.running:
             try:
                 data, addr = self.sock.recvfrom(1024)
                 parsed = self._parse_dhcp_packet(data)
-
+                
                 if not parsed:
                     continue
-
+                
                 client_mac = parsed['client_mac']
                 mac_str = ':'.join(f'{b:02x}' for b in client_mac)
-
+                
                 if parsed['msg_type'] == self.DHCPDISCOVER:
                     logger.info(f"DHCP DISCOVER from {mac_str}")
                     client_ip = self._allocate_ip(client_mac)
-
+                    
                     response = self._build_dhcp_packet(
                         parsed['transaction_id'],
                         client_mac,
                         client_ip,
                         self.DHCPOFFER
                     )
-
+                    
                     self.sock.sendto(response, ('<broadcast>', self.DHCP_CLIENT_PORT))
                     logger.info(f"DHCP OFFER sent to {mac_str}: {client_ip}")
-
+                
                 elif parsed['msg_type'] == self.DHCPREQUEST:
                     logger.info(f"DHCP REQUEST from {mac_str}")
                     client_ip = self._allocate_ip(client_mac)
-
+                    
                     response = self._build_dhcp_packet(
                         parsed['transaction_id'],
                         client_mac,
                         client_ip,
                         self.DHCPACK
                     )
-
+                    
                     self.sock.sendto(response, ('<broadcast>', self.DHCP_CLIENT_PORT))
                     logger.info(f"DHCP ACK sent to {mac_str}: {client_ip}")
-
+                    
             except Exception as e:
                 if self.running:
                     logger.error(f"DHCP error: {e}")
-
+    
     def stop(self):
         """Stop the DHCP server"""
         self.running = False
@@ -284,58 +285,58 @@ class DHCPServer:
 
 class PXEBootServer:
     """Main PXE Boot Server with NBD support"""
-
+    
     def __init__(self, interface, qcow2_path):
         self.interface = interface
         self.qcow2_path = Path(qcow2_path)
         self.server_ip = SERVER_IP
-
+        
         # Process handles
         self.nbd_process = None
         self.dhcp_server = None
         self.tftp_server = None
         self.http_server = None
         self.http_thread = None
-
+        
         # Verify qcow2 file exists
         if not self.qcow2_path.exists():
             raise FileNotFoundError(f"QCOW2 image not found: {qcow2_path}")
-
+        
         logger.info(f"Initializing PXE Boot Server on {interface}")
         logger.info(f"QCOW2 image: {qcow2_path}")
-
+    
     def setup_network(self):
         """Configure network interface"""
         logger.info(f"Configuring network on {self.interface}")
-
+        
         # Bring interface up
         subprocess.run(['ip', 'link', 'set', self.interface, 'up'], check=True)
-
+        
         # Flush existing addresses
         subprocess.run(['ip', 'addr', 'flush', 'dev', self.interface], check=False)
-
+        
         # Add IP address
         subprocess.run(
             ['ip', 'addr', 'add', f'{self.server_ip}/24', 'dev', self.interface],
             check=True
         )
-
+        
         logger.info(f"Network configured: {self.server_ip}/24 on {self.interface}")
-
+    
     def setup_directories(self):
         """Create necessary directories"""
         for directory in [WORK_DIR, TFTP_ROOT, HTTP_ROOT]:
             Path(directory).mkdir(parents=True, exist_ok=True)
-
+        
         # Create pxelinux.cfg directory
         Path(f"{TFTP_ROOT}/pxelinux.cfg").mkdir(exist_ok=True)
-
+        
         logger.info(f"Directories created in {WORK_DIR}")
-
+    
     def copy_bootloader_files(self):
         """Copy PXE bootloader files to TFTP root"""
         logger.info("Setting up bootloader files")
-
+        
         # Common locations for syslinux files (ordered by priority)
         syslinux_paths = [
             '/usr/lib/syslinux/bios',           # Arch Linux, modern systems
@@ -467,14 +468,67 @@ LABEL local
 
             logger.info(f"Found partitions: {partitions}")
 
+            # Check if any partition is LVM
+            lvm_detected = False
+            for partition in partitions:
+                result = subprocess.run(
+                    ['blkid', '-s', 'TYPE', '-o', 'value', partition],
+                    capture_output=True,
+                    text=True
+                )
+                if 'LVM2_member' in result.stdout:
+                    lvm_detected = True
+                    logger.info(f"{partition} is an LVM physical volume")
+                    break
+
+            # Handle LVM volumes
+            if lvm_detected:
+                logger.info("LVM detected - scanning for logical volumes")
+
+                # Scan for volume groups
+                subprocess.run(['vgscan'], check=False, capture_output=True)
+                subprocess.run(['vgchange', '-ay'], check=False, capture_output=True)
+
+                # List logical volumes
+                result = subprocess.run(
+                    ['lvs', '--noheadings', '-o', 'lv_path'],
+                    capture_output=True,
+                    text=True
+                )
+
+                if result.returncode == 0 and result.stdout.strip():
+                    lv_paths = [lv.strip() for lv in result.stdout.strip().split('\n')]
+                    logger.info(f"Found logical volumes: {lv_paths}")
+                    # Add LVM volumes to the list of partitions to try
+                    partitions = lv_paths + partitions
+
             # Create mount point
             mount_point.mkdir(parents=True, exist_ok=True)
 
             # Try mounting each partition until we find /boot
             mounted_partition = None
             for partition in partitions:
+                if not partition or not Path(partition).exists():
+                    continue
+
                 try:
                     logger.info(f"Trying to mount {partition}...")
+
+                    # Try to get filesystem type first
+                    fs_result = subprocess.run(
+                        ['blkid', '-s', 'TYPE', '-o', 'value', partition],
+                        capture_output=True,
+                        text=True
+                    )
+                    fs_type = fs_result.stdout.strip()
+                    if fs_type:
+                        logger.info(f"  Filesystem type: {fs_type}")
+
+                    # Skip swap partitions
+                    if fs_type == 'swap':
+                        logger.info(f"  Skipping swap partition")
+                        continue
+
                     subprocess.run(
                         ['mount', '-o', 'ro', partition, str(mount_point)],
                         check=True,
@@ -533,6 +587,11 @@ LABEL local
 
             # Unmount and disconnect
             subprocess.run(['umount', str(mount_point)], check=True)
+
+            # Deactivate LVM if it was used
+            if lvm_detected:
+                subprocess.run(['vgchange', '-an'], check=False, capture_output=True)
+
             subprocess.run(['qemu-nbd', '--disconnect', nbd_device], check=True)
             mount_point.rmdir()
 
@@ -542,6 +601,7 @@ LABEL local
             logger.error(f"Failed to extract kernel/initrd: {e}")
             logger.error("Attempting cleanup...")
             subprocess.run(['umount', str(mount_point)], check=False)
+            subprocess.run(['vgchange', '-an'], check=False, capture_output=True)
             subprocess.run(['qemu-nbd', '--disconnect', nbd_device], check=False)
             if mount_point.exists():
                 try:
@@ -706,7 +766,8 @@ LABEL local
 
 def check_requirements():
     """Check if required tools are installed"""
-    required_commands = ['qemu-nbd', 'ip', 'modprobe', 'fdisk']
+    required_commands = ['qemu-nbd', 'ip', 'modprobe', 'fdisk', 'blkid']
+    optional_commands = ['vgscan', 'vgchange', 'lvs']  # LVM tools
 
     missing = []
     for cmd in required_commands:
@@ -720,6 +781,20 @@ def check_requirements():
         logger.error("  Arch Linux:    sudo pacman -S qemu-base iproute2 kmod util-linux")
         logger.error("  Fedora/RHEL:   sudo dnf install qemu-img iproute kmod util-linux")
         return False
+
+    # Check for LVM tools (optional but recommended)
+    lvm_missing = []
+    for cmd in optional_commands:
+        if subprocess.run(['which', cmd], capture_output=True).returncode != 0:
+            lvm_missing.append(cmd)
+
+    if lvm_missing:
+        logger.warning(f"Optional LVM tools not found: {', '.join(lvm_missing)}")
+        logger.warning("LVM support will be limited. Install with:")
+        logger.warning("  Debian/Ubuntu: sudo apt install lvm2")
+        logger.warning("  Arch Linux:    sudo pacman -S lvm2")
+        logger.warning("  Fedora/RHEL:   sudo dnf install lvm2")
+        logger.warning("")
 
     # Check for syslinux files
     syslinux_paths = [
@@ -756,7 +831,7 @@ def check_requirements():
         return False
 
     logger.info(f"✓ All {len(found_files)} syslinux files found")
-
+    
     return True
 
 
@@ -772,18 +847,18 @@ def main():
         'qcow2_image',
         help='Path to qcow2 disk image'
     )
-
+    
     args = parser.parse_args()
-
+    
     # Check if running as root
     if os.geteuid() != 0:
         logger.error("This script must be run as root (sudo)")
         sys.exit(1)
-
+    
     # Check requirements
     if not check_requirements():
         sys.exit(1)
-
+    
     # Create and start server
     server = PXEBootServer(args.interface, args.qcow2_image)
     server.start()
