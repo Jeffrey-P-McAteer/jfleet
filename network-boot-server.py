@@ -108,95 +108,147 @@ class DHCPServer:
         
         return ip
     
-    def _build_dhcp_packet(self, transaction_id, client_mac, client_ip, msg_type):
+    def _get_arch_name(self, arch_code):
+        """Get human-readable architecture name"""
+        if arch_code is None:
+            return "Not specified (likely BIOS)"
+        arch_names = {
+            0x0000: "BIOS/Legacy x86",
+            0x0006: "EFI IA32",
+            0x0007: "EFI BC x64",
+            0x0009: "EFI x64",
+            0x000a: "EFI ARM 32-bit",
+            0x000b: "EFI ARM 64-bit",
+        }
+        return arch_names.get(arch_code, f"Unknown (0x{arch_code:04x})")
+
+    def _get_bootfile_for_arch(self, arch_code):
+        """Get appropriate bootloader file for client architecture"""
+
+        if arch_code in (0x0007, 0x0009):  # EFI x64
+            logger.info("  → UEFI x64 client - using GRUB EFI")
+            return "grubx64.efi"
+        elif arch_code == 0x0006:  # EFI IA32
+            logger.info("  → UEFI IA32 client - using GRUB IA32")
+            return "grubia32.efi"
+        elif arch_code == 0x0000 or arch_code is None:  # BIOS
+            logger.info("  → BIOS/Legacy client - using SYSLINUX")
+            return "lpxelinux.0"
+        else:
+            logger.warning(f"  → Unknown architecture - defaulting to BIOS")
+            return "lpxelinux.0"
+
+    def _build_dhcp_packet(self, transaction_id, client_mac, client_ip, msg_type, bootfile='lpxelinux.0'):
         """Build a DHCP packet"""
         packet = bytearray(300)
-        
+
         # BOOTP header
         packet[0] = 2  # Boot Reply
         packet[1] = 1  # Ethernet
         packet[2] = 6  # Hardware address length
         packet[3] = 0  # Hops
-        
+
         # Transaction ID
         packet[4:8] = transaction_id
-        
-        # Seconds and flags
-        packet[8:12] = b'\x00' * 4
-        
+
+        # Seconds elapsed
+        packet[8:10] = b'\x00\x00'
+
+        # Flags - Set broadcast flag for PXE compatibility
+        packet[10:12] = b'\x80\x00'  # Broadcast bit set
+
         # Client IP (ciaddr) - empty for DISCOVER
         packet[12:16] = b'\x00' * 4
-        
+
         # Your IP (yiaddr) - the offered IP
         packet[16:20] = socket.inet_aton(client_ip)
-        
+
         # Server IP (siaddr)
         packet[20:24] = socket.inet_aton(self.server_ip)
-        
+
         # Gateway IP (giaddr)
         packet[24:28] = b'\x00' * 4
-        
+
         # Client MAC address
         packet[28:34] = client_mac
         packet[34:44] = b'\x00' * 10  # Padding
-        
-        # Server name and boot file
+
+        # Server hostname (sname field) - 64 bytes at offset 44
+        # Leave empty, using siaddr instead
         packet[44:108] = b'\x00' * 64
-        packet[108:236] = b'\x00' * 128
-        
+
+        # Boot filename (file field) - 128 bytes at offset 108
+        # This is critical for PXE - put the boot filename here
+        boot_filename_bytes = bootfile.encode('ascii') + b'\x00'
+        packet[108:108+len(boot_filename_bytes)] = boot_filename_bytes
+        packet[108+len(boot_filename_bytes):236] = b'\x00' * (128 - len(boot_filename_bytes))
+
         # Magic cookie
         packet[236:240] = bytes([99, 130, 83, 99])
-        
+
         # DHCP options
         options = bytearray()
-        
+
         # Option 53: DHCP Message Type
         options.extend([53, 1, msg_type])
-        
+
         # Option 54: DHCP Server Identifier
         options.extend([54, 4] + list(socket.inet_aton(self.server_ip)))
-        
+
         # Option 51: IP Address Lease Time (1 hour)
         options.extend([51, 4, 0, 0, 14, 16])
-        
+
         # Option 1: Subnet Mask
         options.extend([1, 4] + list(socket.inet_aton(self.netmask)))
-        
+
         # Option 3: Router
         options.extend([3, 4] + list(socket.inet_aton(self.server_ip)))
-        
+
         # Option 6: DNS Server
         options.extend([6, 4] + list(socket.inet_aton(self.server_ip)))
-        
-        # PXE Options
-        # Option 66: TFTP Server Name
-        options.extend([66, 4] + list(socket.inet_aton(self.server_ip)))
-        
-        # Option 67: Bootfile Name
-        bootfile = b"lpxelinux.0"
-        options.extend([67, len(bootfile)] + list(bootfile))
-        
+
+        # Option 60: Vendor Class Identifier - Must match "PXEClient"
+        vendor_class = b"PXEClient"
+        options.extend([60, len(vendor_class)] + list(vendor_class))
+
+        # Option 43: Vendor-Specific Information (PXE Magic)
+        # Sub-option 6: PXE Discovery Control - 0x08 = use boot server list
+        pxe_vendor_options = bytearray([6, 1, 0x08])
+        options.extend([43, len(pxe_vendor_options)] + list(pxe_vendor_options))
+
+        # Option 66: TFTP Server Name (use IP as string for compatibility)
+        tftp_server = self.server_ip.encode('ascii')
+        options.extend([66, len(tftp_server)] + list(tftp_server))
+
+        # Option 67: Bootfile Name (also in BOOTP field above, but include for compatibility)
+        bootfile_bytes = bootfile.encode('ascii')
+        options.extend([67, len(bootfile_bytes)] + list(bootfile_bytes))
+
         # End option
         options.append(255)
-        
+
         packet[240:240+len(options)] = options
-        
+
         return bytes(packet[:240+len(options)])
-    
+
     def _parse_dhcp_packet(self, data):
         """Parse incoming DHCP packet"""
         if len(data) < 240:
             return None
-        
+
         # Check magic cookie
         if data[236:240] != bytes([99, 130, 83, 99]):
             return None
-        
+
         transaction_id = data[4:8]
         client_mac = data[28:34]
-        
-        # Parse options to find message type
+
+        # Parse options to find message type and vendor class
         msg_type = None
+        vendor_class = None
+        requested_ip = None
+        client_arch = None  # Option 93 - Client System Architecture
+
         i = 240
         while i < len(data):
             option = data[i]
@@ -205,77 +257,121 @@ class DHCPServer:
             if option == 0:  # Pad option
                 i += 1
                 continue
-            
+
             option_len = data[i + 1]
             if option == 53:  # DHCP Message Type
                 msg_type = data[i + 2]
-            
+            elif option == 60:  # Vendor Class Identifier
+                vendor_class = data[i + 2:i + 2 + option_len]
+            elif option == 50:  # Requested IP Address
+                requested_ip = socket.inet_ntoa(data[i + 2:i + 6])
+            elif option == 93:  # Client System Architecture
+                # This is a 2-byte value
+                if option_len >= 2:
+                    client_arch = (data[i + 2] << 8) | data[i + 3]
+
             i += 2 + option_len
-        
+
         return {
             'transaction_id': transaction_id,
             'client_mac': client_mac,
-            'msg_type': msg_type
+            'msg_type': msg_type,
+            'vendor_class': vendor_class,
+            'requested_ip': requested_ip,
+            'client_arch': client_arch
         }
-    
+
     def start(self):
         """Start the DHCP server"""
         self.running = True
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-        
+
         try:
             self.sock.bind(('', self.DHCP_SERVER_PORT))
         except PermissionError:
             logger.error("Permission denied binding to port 67. Run as root!")
             return
-        
+
         logger.info(f"DHCP server started on port {self.DHCP_SERVER_PORT}")
-        
+
         while self.running:
             try:
                 data, addr = self.sock.recvfrom(1024)
                 parsed = self._parse_dhcp_packet(data)
-                
+
                 if not parsed:
                     continue
-                
+
                 client_mac = parsed['client_mac']
                 mac_str = ':'.join(f'{b:02x}' for b in client_mac)
-                
+
                 if parsed['msg_type'] == self.DHCPDISCOVER:
+                    vendor = parsed.get('vendor_class', b'').decode('ascii', errors='ignore')
+                    client_arch = parsed.get('client_arch')
+
                     logger.info(f"DHCP DISCOVER from {mac_str}")
-                    client_ip = self._allocate_ip(client_mac)
-                    
+                    if vendor:
+                        logger.info(f"  Vendor Class: {vendor}")
+                    if client_arch is not None:
+                        logger.info(f"  Client Architecture: {client_arch} ({self._get_arch_name(client_arch)})")
+
+                    # Determine bootloader based on architecture
+                    # Arch 0x0000 = BIOS/legacy
+                    # Arch 0x0007 = EFI BC (x64)
+                    # Arch 0x0009 = EFI x64
+                    # Arch 0x0006 = EFI IA32
+                    bootfile = self._get_bootfile_for_arch(client_arch)
+                    logger.info(f"  Selected bootloader: {bootfile}")
+
+                    # Check if this is a PXE client
+                    is_pxe = vendor and 'PXEClient' in vendor
+
+                    # Check if client already has an IP (ProxyDHCP mode)
+                    client_has_ip = data[12:16] != b'\x00\x00\x00\x00'  # ciaddr field
+
+                    if is_pxe and client_has_ip:
+                        # ProxyDHCP mode - client wants boot info only, not IP
+                        logger.info(f"  ProxyDHCP mode detected - client already has IP")
+                        client_ip = socket.inet_ntoa(data[12:16])
+                        logger.info(f"  Client IP: {client_ip}")
+                    else:
+                        # Normal DHCP - allocate new IP
+                        logger.debug(f"  Client address: {addr}")
+                        client_ip = self._allocate_ip(client_mac)
+
                     response = self._build_dhcp_packet(
                         parsed['transaction_id'],
                         client_mac,
                         client_ip,
-                        self.DHCPOFFER
+                        self.DHCPOFFER,
+                        bootfile
                     )
-                    
+
                     self.sock.sendto(response, ('<broadcast>', self.DHCP_CLIENT_PORT))
                     logger.info(f"DHCP OFFER sent to {mac_str}: {client_ip}")
-                
+                    logger.info(f"  Next server: {self.server_ip}")
+                    logger.info(f"  Boot file: {bootfile}")
+
                 elif parsed['msg_type'] == self.DHCPREQUEST:
                     logger.info(f"DHCP REQUEST from {mac_str}")
                     client_ip = self._allocate_ip(client_mac)
-                    
+
                     response = self._build_dhcp_packet(
                         parsed['transaction_id'],
                         client_mac,
                         client_ip,
                         self.DHCPACK
                     )
-                    
+
                     self.sock.sendto(response, ('<broadcast>', self.DHCP_CLIENT_PORT))
                     logger.info(f"DHCP ACK sent to {mac_str}: {client_ip}")
-                    
+
             except Exception as e:
                 if self.running:
                     logger.error(f"DHCP error: {e}")
-    
+
     def stop(self):
         """Stop the DHCP server"""
         self.running = False
@@ -285,58 +381,58 @@ class DHCPServer:
 
 class PXEBootServer:
     """Main PXE Boot Server with NBD support"""
-    
+
     def __init__(self, interface, qcow2_path):
         self.interface = interface
         self.qcow2_path = Path(qcow2_path)
         self.server_ip = SERVER_IP
-        
+
         # Process handles
         self.nbd_process = None
         self.dhcp_server = None
         self.tftp_server = None
         self.http_server = None
         self.http_thread = None
-        
+
         # Verify qcow2 file exists
         if not self.qcow2_path.exists():
             raise FileNotFoundError(f"QCOW2 image not found: {qcow2_path}")
-        
+
         logger.info(f"Initializing PXE Boot Server on {interface}")
         logger.info(f"QCOW2 image: {qcow2_path}")
-    
+
     def setup_network(self):
         """Configure network interface"""
         logger.info(f"Configuring network on {self.interface}")
-        
+
         # Bring interface up
         subprocess.run(['ip', 'link', 'set', self.interface, 'up'], check=True)
-        
+
         # Flush existing addresses
         subprocess.run(['ip', 'addr', 'flush', 'dev', self.interface], check=False)
-        
+
         # Add IP address
         subprocess.run(
             ['ip', 'addr', 'add', f'{self.server_ip}/24', 'dev', self.interface],
             check=True
         )
-        
+
         logger.info(f"Network configured: {self.server_ip}/24 on {self.interface}")
-    
+
     def setup_directories(self):
         """Create necessary directories"""
         for directory in [WORK_DIR, TFTP_ROOT, HTTP_ROOT]:
             Path(directory).mkdir(parents=True, exist_ok=True)
-        
+
         # Create pxelinux.cfg directory
         Path(f"{TFTP_ROOT}/pxelinux.cfg").mkdir(exist_ok=True)
-        
+
         logger.info(f"Directories created in {WORK_DIR}")
-    
+
     def copy_bootloader_files(self):
         """Copy PXE bootloader files to TFTP root"""
         logger.info("Setting up bootloader files")
-        
+
         # Common locations for syslinux files (ordered by priority)
         syslinux_paths = [
             '/usr/lib/syslinux/bios',           # Arch Linux, modern systems
@@ -392,6 +488,112 @@ class PXEBootServer:
             raise FileNotFoundError(f"Missing bootloader files: {', '.join(missing_files)}")
 
         logger.info("All bootloader files ready")
+
+    def copy_uefi_bootloader_files(self):
+        """Copy UEFI GRUB bootloader files to TFTP root"""
+        logger.info("Setting up UEFI bootloader files")
+
+        # Common locations for pre-built GRUB EFI files
+        grub_paths = [
+            '/usr/lib/grub/x86_64-efi/monolithic/grubnetx64.efi.signed',
+            '/usr/lib/grub/x86_64-efi/monolithic/grubnetx64.efi',
+            '/boot/efi/EFI/centos/grubx64.efi',
+            '/boot/efi/EFI/fedora/grubx64.efi',
+            '/boot/efi/EFI/arch/grubx64.efi',
+            '/boot/efi/EFI/ubuntu/grubx64.efi',
+            '/boot/efi/EFI/debian/grubx64.efi',
+            '/usr/lib/grub/x86_64-efi/grubnetx64.efi',
+        ]
+
+        dest = Path(f"{TFTP_ROOT}/grubx64.efi")
+
+        if dest.exists():
+            logger.info("✓ UEFI bootloader already exists: grubx64.efi")
+            return
+
+        # Search for pre-built GRUB EFI file
+        for grub_path in grub_paths:
+            source = Path(grub_path)
+            if source.exists():
+                subprocess.run(['cp', str(source), str(dest)], check=True)
+                logger.info(f"✓ Copied GRUB EFI from {grub_path}")
+                return
+
+        # No pre-built file found - try to build it
+        logger.info("Pre-built grubx64.efi not found - attempting to build...")
+
+        if not self._build_grub_efi(dest):
+            logger.warning("=" * 60)
+            logger.warning("UEFI bootloader (grubx64.efi) not available")
+            logger.warning("UEFI clients will not be able to boot!")
+            logger.warning("")
+            logger.warning("Install GRUB EFI bootloader:")
+            logger.warning("  Debian/Ubuntu: sudo apt install grub-efi-amd64-bin grub-common")
+            logger.warning("  Arch Linux:    sudo pacman -S grub")
+            logger.warning("  Fedora/RHEL:   sudo dnf install grub2-efi-x64 grub2-tools")
+            logger.warning("")
+            logger.warning("Or manually run: ./build_grub_efi.sh")
+            logger.warning("=" * 60)
+
+    def _build_grub_efi(self, output_path):
+        """Build grubx64.efi from GRUB modules using grub-mkstandalone"""
+        # Check if grub-mkstandalone is available
+        if subprocess.run(['which', 'grub-mkstandalone'], capture_output=True).returncode != 0:
+            logger.warning("grub-mkstandalone not found - cannot build GRUB EFI")
+            return False
+
+        try:
+            logger.info("Building GRUB EFI bootloader from modules...")
+
+            # Create embedded config that loads main config from TFTP
+            embedded_cfg = Path('/tmp/grub-embedded.cfg')
+            embedded_cfg.write_text("""# Embedded GRUB config
+set prefix=(tftp)/
+configfile (tftp)/grub.cfg
+""")
+
+            # Build the standalone EFI image
+            cmd = [
+                'grub-mkstandalone',
+                '--format=x86_64-efi',
+                '--output=' + str(output_path),
+                '--compress=xz',
+                '--modules=tftp net efinet http configfile normal linux loopback part_gpt part_msdos fat ext2 iso9660 echo boot',
+                '/boot/grub/grub.cfg=' + str(embedded_cfg)
+            ]
+
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            embedded_cfg.unlink()  # Clean up temp file
+
+            if result.returncode == 0 and output_path.exists():
+                size = output_path.stat().st_size
+                logger.info(f"✓ Built grubx64.efi successfully ({size / 1024:.1f} KB)")
+                return True
+            else:
+                logger.warning(f"Failed to build GRUB EFI: {result.stderr}")
+                return False
+
+        except Exception as e:
+            logger.warning(f"Error building GRUB EFI: {e}")
+            return False
+
+    def create_grub_config(self):
+        """Create GRUB configuration for UEFI boot"""
+        grub_config = f"""set timeout=5
+set default=0
+
+menuentry "Boot from Network (NBD)" {{
+    echo "Loading kernel..."
+    linux (tftp)/vmlinuz root=/dev/nbd0 nbdroot={self.server_ip}:{NBD_PORT} ip=dhcp rd.neednet=1 console=tty0 console=ttyS0,115200n8
+    echo "Loading initramfs..."
+    initrd (tftp)/initrd.img
+    echo "Booting..."
+}}
+"""
+
+        grub_cfg_path = Path(f"{TFTP_ROOT}/grub.cfg")
+        grub_cfg_path.write_text(grub_config)
+        logger.info("✓ GRUB configuration created")
 
     def create_pxe_config(self):
         """Create PXE boot configuration"""
@@ -468,39 +670,35 @@ LABEL local
 
             logger.info(f"Found partitions: {partitions}")
 
-            # Check if any partition is LVM
+            # Always check for LVM - don't rely on blkid detection
+            logger.info("Checking for LVM volumes...")
+
+            # Scan for volume groups
+            subprocess.run(['vgscan', '--mknodes'], check=False, capture_output=True)
+            subprocess.run(['vgchange', '-ay'], check=False, capture_output=True)
+
+            # Give LVM time to create device nodes
+            time.sleep(2)
+
+            # List logical volumes
+            lv_result = subprocess.run(
+                ['lvs', '--noheadings', '-o', 'lv_path'],
+                capture_output=True,
+                text=True
+            )
+
             lvm_detected = False
-            for partition in partitions:
-                result = subprocess.run(
-                    ['blkid', '-s', 'TYPE', '-o', 'value', partition],
-                    capture_output=True,
-                    text=True
-                )
-                if 'LVM2_member' in result.stdout:
+            if lv_result.returncode == 0 and lv_result.stdout.strip():
+                lv_paths = [lv.strip() for lv in lv_result.stdout.strip().split('\n') if lv.strip()]
+                if lv_paths:
                     lvm_detected = True
-                    logger.info(f"{partition} is an LVM physical volume")
-                    break
-
-            # Handle LVM volumes
-            if lvm_detected:
-                logger.info("LVM detected - scanning for logical volumes")
-
-                # Scan for volume groups
-                subprocess.run(['vgscan'], check=False, capture_output=True)
-                subprocess.run(['vgchange', '-ay'], check=False, capture_output=True)
-
-                # List logical volumes
-                result = subprocess.run(
-                    ['lvs', '--noheadings', '-o', 'lv_path'],
-                    capture_output=True,
-                    text=True
-                )
-
-                if result.returncode == 0 and result.stdout.strip():
-                    lv_paths = [lv.strip() for lv in result.stdout.strip().split('\n')]
-                    logger.info(f"Found logical volumes: {lv_paths}")
-                    # Add LVM volumes to the list of partitions to try
+                    logger.info(f"✓ Found LVM logical volumes: {lv_paths}")
+                    # Prepend LVM volumes to try them first
                     partitions = lv_paths + partitions
+                else:
+                    logger.info("No LVM logical volumes found")
+            else:
+                logger.info("No LVM detected (this is fine for non-LVM images)")
 
             # Create mount point
             mount_point.mkdir(parents=True, exist_ok=True)
@@ -617,7 +815,7 @@ LABEL local
         cmd = [
             'qemu-nbd',
             '--persistent',
-            '--shared=1',
+            '--shared=8',
             '-f', 'qcow2',
             str(self.qcow2_path),
             '--bind', self.server_ip,
@@ -710,9 +908,11 @@ LABEL local
             # Setup
             self.setup_network()
             self.setup_directories()
-            self.copy_bootloader_files()
+            self.copy_bootloader_files()  # BIOS/Legacy bootloader
+            self.copy_uefi_bootloader_files()  # UEFI bootloader
             self.extract_kernel_initrd()
-            self.create_pxe_config()
+            self.create_pxe_config()  # BIOS config
+            self.create_grub_config()  # UEFI config
 
             # Start services
             self.start_nbd_server()
@@ -729,6 +929,10 @@ LABEL local
             logger.info(f"Network: {NETWORK_SUBNET}")
             logger.info(f"DHCP Range: {DHCP_RANGE_START} - {DHCP_RANGE_END}")
             logger.info(f"NBD Export: {self.server_ip}:{NBD_PORT}")
+            logger.info("")
+            logger.info("Boot Modes Supported:")
+            logger.info("  ✓ BIOS/Legacy (lpxelinux.0)")
+            logger.info("  ✓ UEFI x64 (grubx64.efi)")
             logger.info("")
             logger.info("Connect a client via ethernet and PXE boot it")
             logger.info("Press Ctrl+C to stop")
@@ -831,7 +1035,34 @@ def check_requirements():
         return False
 
     logger.info(f"✓ All {len(found_files)} syslinux files found")
-    
+
+    # Check for GRUB EFI files (optional for UEFI support)
+    grub_paths = [
+        '/usr/lib/grub/x86_64-efi/monolithic/grubnetx64.efi.signed',
+        '/usr/lib/grub/x86_64-efi/monolithic/grubnetx64.efi',
+        '/boot/efi/EFI/centos/grubx64.efi',
+        '/boot/efi/EFI/fedora/grubx64.efi',
+        '/boot/efi/EFI/arch/grubx64.efi',
+        '/boot/efi/EFI/ubuntu/grubx64.efi',
+        '/usr/lib/grub/x86_64-efi/grubnetx64.efi',
+    ]
+
+    grub_found = False
+    for grub_path in grub_paths:
+        if Path(grub_path).exists():
+            grub_found = True
+            logger.info(f"✓ GRUB EFI bootloader found: {grub_path}")
+            break
+
+    if not grub_found:
+        logger.warning("GRUB EFI bootloader not found - UEFI boot will not work")
+        logger.warning("Install GRUB EFI for UEFI support:")
+        logger.warning("  Debian/Ubuntu: sudo apt install grub-efi-amd64-bin")
+        logger.warning("  Arch Linux:    sudo pacman -S grub")
+        logger.warning("  Fedora/RHEL:   sudo dnf install grub2-efi-x64-modules")
+        logger.warning("Note: BIOS/Legacy boot will still work")
+        logger.warning("")
+
     return True
 
 
@@ -847,18 +1078,18 @@ def main():
         'qcow2_image',
         help='Path to qcow2 disk image'
     )
-    
+
     args = parser.parse_args()
-    
+
     # Check if running as root
     if os.geteuid() != 0:
         logger.error("This script must be run as root (sudo)")
         sys.exit(1)
-    
+
     # Check requirements
     if not check_requirements():
         sys.exit(1)
-    
+
     # Create and start server
     server = PXEBootServer(args.interface, args.qcow2_image)
     server.start()

@@ -2,3 +2,4 @@ build
 *.img
 *.qcow2
 out
+mnotes
