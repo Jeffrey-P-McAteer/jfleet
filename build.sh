@@ -6,6 +6,29 @@ BASE_IMG_NAME=centosstream-9
 
 set -e
 
+fmt_size() {
+  local kb="${1:-0}"
+  if (( kb >= 1000000 )); then
+    printf "%dg %dmb" $(( kb / 1000000 )) $(( (kb / 1000) % 1000 ))
+  else
+    if (( kb >= 1000 )); then
+      printf "%dmb" $(( kb / 1000 ))
+    else
+      printf "%dkb" "$kb"
+    fi
+  fi
+}
+fmt_secs() {
+  local s="${1:-0}"
+
+  if (( s < 60 )); then
+    printf "%ds" "$s"
+  else
+    printf "%dm %ds" $(( s / 60 )) $(( s % 60 ))
+  fi
+}
+
+
 OUT_DIR=$(dirname "$VM_IMAGE")
 
 if [[ "$1" = "clean" ]] || [[ "$2" = "clean" ]] || [[ "$3" = "clean" ]] ; then
@@ -34,6 +57,7 @@ print_and_run() {
 }
 
 if ! [[ -e "$VM_IMAGE" ]] ; then
+  SECONDS=0
   print_and_run virt-builder $BASE_IMG_NAME \
     -o "$VM_IMAGE" \
     --format "$VM_IMG_FMT" \
@@ -41,18 +65,42 @@ if ! [[ -e "$VM_IMAGE" ]] ; then
     --root-password disabled \
     --cache "$OUT_DIR"/cache \
     --size "$VM_SIZE"
+  RUNTIME_TOTAL_S=${SECONDS}
+  VM_IMAGE_SIZE_KB=$(du -s "$VM_IMAGE" | cut -f1)
+  echo "virt-builder took $(fmt_secs $RUNTIME_TOTAL_S) to build $(fmt_size $VM_IMAGE_SIZE_KB) base image"
+  cat > "$OUT_DIR/completed/initial-virt-builder" <<EOF
+RUNTIME_TOTAL_S=$RUNTIME_TOTAL_S
+VM_IMAGE_SIZE_KB=$VM_IMAGE_SIZE_KB
+EOF
 else
-  echo "$VM_IMAGE exists, skipping virt-builder"
+  source "$OUT_DIR/completed/initial-virt-builder"
+  echo "$VM_IMAGE exists, skipping virt-builder (task took $(fmt_secs $RUNTIME_TOTAL_S), original size $(fmt_size $VM_IMAGE_SIZE_KB))"
 fi
 
 customize_step() {
   STEP_NAME="$1"
   FLAG_FILE="$OUT_DIR/completed/$STEP_NAME"
   if [[ -e "$FLAG_FILE" ]] ; then
-    echo "Step $STEP_NAME completed, skipping."
+    source "$FLAG_FILE"
+    echo "Step $(printf "%-26.26s" $STEP_NAME) completed with a $(printf "%-7.7s" $(fmt_size $STEP_SIZE_INCREASE_KB)) storage size increase, skipping (task took $(fmt_secs $RUNTIME_TOTAL_S))"
   else
+    BEFORE_SIZE_KB=$(du -s "$VM_IMAGE" | cut -f1)
+    SECONDS=0
+
     print_and_run virt-customize --format "$VM_IMG_FMT" -a "$VM_IMAGE" "${@:2}"
-    touch "$FLAG_FILE"
+
+    RUNTIME_TOTAL_S=${SECONDS}
+    AFTER_SIZE_KB=$(du -s "$VM_IMAGE" | cut -f1)
+    STEP_SIZE_INCREASE_KB=$(( $AFTER_SIZE_KB - $BEFORE_SIZE_KB ))
+
+    cat > "$FLAG_FILE" <<EOF
+BEFORE_SIZE_KB=$BEFORE_SIZE_KB
+AFTER_SIZE_KB=$AFTER_SIZE_KB
+STEP_SIZE_INCREASE_KB=$STEP_SIZE_INCREASE_KB
+RUNTIME_TOTAL_S=$RUNTIME_TOTAL_S
+EOF
+    echo "$(printf "%-26.26s" $STEP_NAME) finished with a $(printf "%-7.7s" $(fmt_size $STEP_SIZE_INCREASE_KB)) storage size increase in $(fmt_secs $RUNTIME_TOTAL_S)"
+
   fi
 }
 
@@ -99,6 +147,8 @@ customize_step setup-pycomms \
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
+VM_IMAGE_SIZE_KB=$(du -s "$VM_IMAGE" | cut -f1)
+echo "Final size of $VM_IMAGE is $(fmt_size $VM_IMAGE_SIZE_KB)"
 
 if [[ "$1" = "run" ]] || [[ "$2" = "run" ]] || [[ "$3" = "run" ]] ; then
   ./run.sh "$VM_IMAGE"
