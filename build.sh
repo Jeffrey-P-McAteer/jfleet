@@ -140,14 +140,74 @@ customize_step setup-pycomms \
   --run-command 'systemctl enable pycomms-server.service' \
 
 customize_step setup-nbd \
-  --run-command 'echo "nbd" | sudo tee /etc/modules-load.d/nbd.conf' \
-  --run-command 'echo "add_drivers+=\" nbd \"" > /etc/dracut.conf.d/nbd.conf' \
-  --run-command 'echo "add_dracutmodules+=\" network nbd \"" >> /etc/dracut.conf.d/nbd.conf' \
-  --run-command 'for kver in $(rpm -q kernel --qf "%{VERSION}-%{RELEASE}.%{ARCH}\\n"); do dracut --force --add "network nbd" /boot/initramfs-${kver}.img ${kver}; done' \
+  --install dracut-network \
+  --run-command 'echo "nbd" > /etc/modules-load.d/nbd.conf' \
+  --run-command 'echo "options nbd max_part=16" > /etc/modprobe.d/nbd.conf' \
+  --run-command 'echo "# NBD network boot configuration" > /etc/dracut.conf.d/90-nbd.conf' \
+  --run-command 'echo "add_drivers+=\" nbd \"" >> /etc/dracut.conf.d/90-nbd.conf' \
+  --run-command 'echo "add_dracutmodules+=\" network \"" >> /etc/dracut.conf.d/90-nbd.conf' \
+  --run-command 'echo "kernel_cmdline+=\" rd.neednet=1 \"" >> /etc/dracut.conf.d/90-nbd.conf' \
+  --run-command 'echo "hostonly=no" >> /etc/dracut.conf.d/90-nbd.conf' \
+  --mkdir /usr/lib/dracut/modules.d/95nbd \
+    --write '/usr/lib/dracut/modules.d/95nbd/module-setup.sh:#!/bin/bash
+check() {
+    return 0
+}
+depends() {
+    echo network
+}
+install() {
+    inst_hook cmdline 90 "$moddir/parse-nbd.sh"
+    inst_hook pre-mount 90 "$moddir/mount-nbd.sh"
+}
+' \
+    --write '/usr/lib/dracut/modules.d/95nbd/parse-nbd.sh:#!/bin/bash
+# Parse nbdroot= kernel parameter
+if [ -n "$nbdroot" ]; then
+    info "NBD: nbdroot=$nbdroot"
+    echo "$nbdroot" > /tmp/nbdroot
+fi
+' \
+    --write '/usr/lib/dracut/modules.d/95nbd/mount-nbd.sh:#!/bin/bash
+# Mount NBD device as root
+if [ -f /tmp/nbdroot ]; then
+    nbdroot=$(cat /tmp/nbdroot)
+    info "NBD: Connecting to $nbdroot"
+
+    # Load NBD module
+    modprobe nbd max_part=16
+
+    # Parse server:port
+    server="${nbdroot%:*}"
+    port="${nbdroot##*:}"
+
+    # Connect using nbd-client if available, otherwise use kernel module directly
+    if command -v nbd-client >/dev/null 2>&1; then
+        nbd-client "$server" "$port" /dev/nbd0
+    else
+        # Use kernel module directly via sysfs
+        echo "$server $port" > /sys/module/nbd/parameters/nbdserver 2>/dev/null || true
+    fi
+
+    # Wait for device
+    sleep 2
+
+    info "NBD: Connected /dev/nbd0"
+fi
+' \
+    --chmod '0755:/usr/lib/dracut/modules.d/95nbd/module-setup.sh' \
+    --chmod '0755:/usr/lib/dracut/modules.d/95nbd/parse-nbd.sh' \
+    --chmod '0755:/usr/lib/dracut/modules.d/95nbd/mount-nbd.sh' \
+    --run-command 'for kver in $(rpm -q kernel --qf "%{VERSION}-%{RELEASE}.%{ARCH}\n"); do echo "Building initramfs for kernel $kver..."; dracut --force --add "network nbd" --add-drivers "nbd" --no-hostonly /boot/initramfs-${kver}.img ${kver} && echo "  ✓ Success for $kver" || exit 1; done'
 
 
 
+customize_step verify-nbd \
+    --run-command 'kver=$(rpm -q kernel --qf "%{VERSION}-%{RELEASE}.%{ARCH}\n" | head -1); echo "Checking initramfs for kernel $kver:"; if lsinitrd /boot/initramfs-${kver}.img | grep -q "nbd.ko"; then echo "  ✓ NBD kernel module found"; else echo "  ✗ WARNING: NBD module not found"; fi; if lsinitrd /boot/initramfs-${kver}.img | grep -q "modules.d/95nbd"; then echo "  ✓ NBD dracut module found"; else echo "  ℹ NBD dracut module not found (may not be needed)"; fi' \
 
+
+#for kver in $(rpm -q kernel --qf "%{VERSION}-%{RELEASE}.%{ARCH}\n"); do echo dracut --force --add "network nbd" /boot/initramfs-${kver}.img ${kver}; done
+#dracut --force --add "network nbd" /boot/initramfs-5.14.0-71.el9.x86_64.img 5.14.0-71.el9.x86_64
 
 
 
