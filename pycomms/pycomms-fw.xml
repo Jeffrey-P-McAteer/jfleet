@@ -1,9 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <zone>
-  <short>Public</short>
-  <description>Public Zone</description>
+  <short>pycomms</short>
+  <description>Pycomms UDP Zone</description>
   <rule family="ipv4">
     <destination address="224.0.0.0/4"/>
+    <accept/>
+  </rule>
+  <rule family="ipv4">
+    <port port="50000" protocol="udp"/>
     <accept/>
   </rule>
 </zone>
