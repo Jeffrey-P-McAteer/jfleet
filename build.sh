@@ -160,7 +160,7 @@ customize_step setup-nbd \
     --run-command 'echo "add_dracutmodules+=\" nbdroot network \"" > /etc/dracut.conf.d/90-nbd.conf' \
     --run-command 'echo "add_drivers+=\" nbd \"" >> /etc/dracut.conf.d/90-nbd.conf' \
     --run-command 'echo "hostonly=no" >> /etc/dracut.conf.d/90-nbd.conf' \
-  --run-command 'for kver in $(rpm -q kernel --qf "%{VERSION}-%{RELEASE}.%{ARCH}\n"); do dracut -f --no-hostonly /boot/initramfs-${kver}.img ${kver} || exit 1; done' \
+  --run-command 'for kver in $(rpm -q kernel --qf "%{VERSION}-%{RELEASE}.%{ARCH}\n"); do dracut -f /boot/initramfs-${kver}.img ${kver} || exit 1; done' \
   --run-command 'kver=$(rpm -q kernel --qf "%{VERSION}-%{RELEASE}.%{ARCH}\n" | head -1); if lsinitrd /boot/initramfs-${kver}.img | grep -q nbd-client; then echo "✓ nbd-client found in initramfs"; else echo "✗ nbd-client NOT in initramfs"; exit 1; fi' \
 
 

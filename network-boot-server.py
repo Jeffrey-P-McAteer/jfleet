@@ -627,7 +627,7 @@ set default=0
 
 menuentry "Boot from Network (NBD)" {{
     echo "Loading kernel..."
-    linux (tftp)/vmlinuz root=/dev/nbd0 nbdroot={self.server_ip}:{NBD_PORT} ip=dhcp rd.neednet=1 rd.debug
+    linux (tftp)/vmlinuz root=/dev/nbd0 rw nbdroot={self.server_ip}:{NBD_PORT} netroot=nbd:{self.server_ip}:{NBD_PORT} ip=dhcp rd.neednet=1 rd.debug
     echo "Loading initramfs..."
     initrd (tftp)/initrd.img
     echo "Booting..."
