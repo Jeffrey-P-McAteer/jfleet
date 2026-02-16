@@ -15,6 +15,7 @@ import fcntl
 import traceback
 import sys
 import subprocess
+import threading
 
 # We use "uv" on dev machine, and the server has python3-cryptography installed.
 import cryptography
@@ -90,7 +91,40 @@ def do_cmd(cmd):
             }
 
 def run_cli_cmd(args):
-    return subprocess.check_output(args, text=True)
+    return subprocess.check_output(args, text=True, timeout=120)
+
+def handle_one_connection(tx, fernet, assumed_ciphertext, our_outputs_to_ignore):
+    out_obj = None
+    try:
+        cmd = fernet.decrypt(assumed_ciphertext)
+        try:
+            cmd = cmd.decode(errors="ignore").strip()
+        except:
+            pass
+        try:
+            cmd = json.loads(cmd)
+        except:
+            pass
+        # CMD may now either be a bare string or an array/dict of JSON data
+        out_obj = do_cmd(cmd)
+    except:
+        out_obj = {
+            'error': f'{traceback.format_exc()}'
+        }
+
+    if isinstance(out_obj, str):
+        payload = out_obj.encode('utf-8')+b'\n'
+    elif isinstance(out_obj, bytes):
+        payload = out_obj
+    else:
+        payload = json.dumps(out_obj).encode('utf-8')+b'\n'
+
+    # encrypt payload
+    ciphertext = fernet.encrypt(payload)
+
+    our_outputs_to_ignore.append(ciphertext)
+
+    tx.sendto(ciphertext, (MCAST_GRP, MCAST_PORT))
 
 def main_server():
     # Receiver socket
@@ -114,6 +148,8 @@ def main_server():
 
     fernet = load_existing_pycomms_keyfile()
 
+    bg_threads = []
+
     while True:
         if len(our_outputs_to_ignore) > NUM_OUTPUTS_TO_IGNORE:
             our_outputs_to_ignore.pop(0)
@@ -122,36 +158,17 @@ def main_server():
         if assumed_ciphertext in our_outputs_to_ignore:
             continue
 
-        out_obj = None
+        handler_t = threading.Thread(
+            target=handle_one_connection,
+            args=(tx, fernet, assumed_ciphertext, our_outputs_to_ignore, )
+        )
+        handler_t.start()
+        bg_threads.append(handler_t)
+
         try:
-            cmd = fernet.decrypt(assumed_ciphertext)
-            try:
-                cmd = cmd.decode(errors="ignore").strip()
-            except:
-                pass
-            try:
-                cmd = json.loads(cmd)
-            except:
-                pass
-            # CMD may now either be a bare string or an array/dict of JSON data
-            out_obj = do_cmd(cmd)
+            bg_threads = [t for t in bg_threads if t.is_alive()]
         except:
-            out_obj = {
-                'error': f'{traceback.format_exc()}'
-            }
-
-        if isinstance(out_obj, str):
-            payload = out_obj.encode('utf-8')+b'\n'
-        elif isinstance(out_obj, bytes):
-            payload = out_obj
-        else:
-            payload = json.dumps(out_obj).encode('utf-8')+b'\n'
-
-        # encrypt payload
-        ciphertext = fernet.encrypt(payload)
-
-        our_outputs_to_ignore.append(ciphertext)
-        tx.sendto(ciphertext, (MCAST_GRP, MCAST_PORT))
+            pass
 
 def if_git_above_cd_to_it():
     try:
