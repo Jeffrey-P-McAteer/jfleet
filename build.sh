@@ -111,7 +111,7 @@ customize_step systemd-adjustments \
   --run-command 'rm -f /.autorelabel /etc/selinux/.autorelabel || true' \
   --run-command 'sync'
 
-customize_step install-packages --install vim,git,bash-completion,python
+customize_step install-packages --install vim,git,bash-completion,python,socat
 
 customize_step create-user \
   --run-command 'useradd -m -G wheel -s /bin/bash user' \
