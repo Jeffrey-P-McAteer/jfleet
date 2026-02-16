@@ -148,17 +148,18 @@ customize_step setup-nbd \
     --run-command 'cd /tmp/nbd-3.25 && make' \
     --run-command 'cd /tmp/nbd-3.25 && make install' \
     --run-command 'rm -rf /tmp/nbd-3.25 /tmp/nbd.tar.gz' \
-  --run-command 'mkdir -p /usr/lib/dracut/hooks/pre-mount' \
-  --copy-in boot-controls/30-nbd-mount.sh:'/usr/lib/dracut/hooks/pre-mount/' \
-  --run-command 'chown -R root:root /usr/lib/dracut/hooks/pre-mount/' \
-  --chmod '0755:/usr/lib/dracut/hooks/pre-mount/30-nbd-mount.sh' \
-    --run-command 'echo "nbd" > /etc/modules-load.d/nbd.conf' \
-    --run-command 'echo "options nbd max_part=16" > /etc/modprobe.d/nbd.conf' \
-    --run-command 'echo "add_dracutmodules+=\" network \"" > /etc/dracut.conf.d/90-nbd.conf' \
+  --mkdir /usr/lib/dracut/modules.d/95nbdroot \
+  --upload /tmp/module-setup.sh:/usr/lib/dracut/modules.d/95nbdroot/module-setup.sh \
+  --upload /tmp/parse-nbdroot.sh:/usr/lib/dracut/modules.d/95nbdroot/parse-nbdroot.sh \
+  --upload /tmp/mount-nbdroot.sh:/usr/lib/dracut/modules.d/95nbdroot/mount-nbdroot.sh \
+  --upload /tmp/nbdroot.sh:/usr/lib/dracut/modules.d/95nbdroot/nbdroot.sh \
+  --chmod '0755:/usr/lib/dracut/modules.d/95nbdroot/module-setup.sh' \
+  --chmod '0755:/usr/lib/dracut/modules.d/95nbdroot/parse-nbdroot.sh' \
+  --chmod '0755:/usr/lib/dracut/modules.d/95nbdroot/mount-nbdroot.sh' \
+  --chmod '0755:/usr/lib/dracut/modules.d/95nbdroot/nbdroot.sh' \
+    --run-command 'echo "add_dracutmodules+=\" nbdroot network \"" > /etc/dracut.conf.d/90-nbd.conf' \
     --run-command 'echo "add_drivers+=\" nbd \"" >> /etc/dracut.conf.d/90-nbd.conf' \
-    --run-command 'echo "install_items+=\" /usr/bin/nbd-client /usr/sbin/nbd-client /usr/lib/dracut/hooks/pre-mount/30-nbd-mount.sh \"" >> /etc/dracut.conf.d/90-nbd.conf' \
     --run-command 'echo "hostonly=no" >> /etc/dracut.conf.d/90-nbd.conf' \
-    --run-command 'echo "kernel_cmdline+=\" rd.neednet=1 rd.debug \"" >> /etc/dracut.conf.d/90-nbd.conf' \
   --run-command 'for kver in $(rpm -q kernel --qf "%{VERSION}-%{RELEASE}.%{ARCH}\n"); do dracut -f --no-hostonly /boot/initramfs-${kver}.img ${kver} || exit 1; done' \
   --run-command 'kver=$(rpm -q kernel --qf "%{VERSION}-%{RELEASE}.%{ARCH}\n" | head -1); if lsinitrd /boot/initramfs-${kver}.img | grep -q nbd-client; then echo "✓ nbd-client found in initramfs"; else echo "✗ nbd-client NOT in initramfs"; exit 1; fi' \
 
