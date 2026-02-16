@@ -3,6 +3,7 @@
   <short>pycomms</short>
   <description>Pycomms UDP Zone</description>
   <rule family="ipv4">
+    <source address="0.0.0.0/0"/>
     <destination address="224.0.0.0/4"/>
     <accept/>
   </rule>
