@@ -10,7 +10,10 @@ virt-builder --list
 # Building the Images
 
 ```bash
+sudo rm -rf out/completed out/jfleet-node.qcow2 /tmp/pxeboot
+
 ./build.sh
+
 ```
 
 # Testing the Images
