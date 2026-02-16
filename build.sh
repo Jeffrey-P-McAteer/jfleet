@@ -160,7 +160,8 @@ customize_step setup-nbd \
   --run-command 'kver=$(rpm -q kernel --qf "%{VERSION}-%{RELEASE}.%{ARCH}\n" | head -1); if lsinitrd /boot/initramfs-${kver}.img | grep -q nbd-client; then echo "✓ nbd-client found in initramfs"; else echo "✗ nbd-client NOT in initramfs"; exit 1; fi' \
 
 customize_step tweak-firewall \
-  --run-command 'sudo firewall-cmd --permanent --add-rich-rule='\''rule family="ipv4" destination address="224.0.0.0/4" accept'\' \
+  --run-command 'mkdir -p /etc/firewalld/zones/' \
+  --copy-in pycomms/firewalld-pycomms-config.xml:/etc/firewalld/zones/ \
 
 #$ echo 'abc'\''123'
 #  abc'123

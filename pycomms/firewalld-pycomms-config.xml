@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<zone>
+  <short>Public</short>
+  <description>Public Zone</description>
+  <rule family="ipv4">
+    <destination address="224.0.0.0/4"/>
+    <accept/>
+  </rule>
+</zone>

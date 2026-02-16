@@ -183,7 +183,7 @@ def main_client(args):
     if_git_above_cd_to_it() # Now we can assume developer file-paths begin at jfleet git repo root.
 
     if args[0] == 'init-crypto':
-        os.makedirs('crypto', exists_ok=True)
+        os.makedirs('crypto', exist_ok=True)
         key_file = os.path.abspath('crypto/pycomms-key')
         if not os.path.exists(key_file):
             key = Fernet.generate_key()
@@ -196,6 +196,7 @@ def main_client(args):
     else:
         fernet = load_existing_pycomms_keyfile()
         message = json.dumps(args)
+        message = message.encode('utf-8')
         ciphertext = fernet.encrypt(message)
 
         # Send all args to multicast, print replies for 2s
@@ -237,13 +238,15 @@ def main_client(args):
                         pass
 
                     if isinstance(reply, str):
-                        print(reply)
+                        print(f'{addr}> {reply}')
                     else:
-                        print(json.dumps(reply, indent=2))
+                        print(f'{addr}> {json.dumps(reply, indent=2)}')
                 except:
                     traceback.print_exc() # Likely bad encryption
         except:
-            if not 'UNKNOWN-TAG' in traceback.format_exc():
+            if 'TimeoutError' in traceback.format_exc():
+                print(f'Timed Out')
+            else:
                 traceback.print_exc()
 
 def main():
