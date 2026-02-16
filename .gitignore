@@ -3,3 +3,5 @@ build
 *.qcow2
 out
 mnotes
+crypto
+

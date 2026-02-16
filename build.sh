@@ -132,9 +132,14 @@ customize_step create-user \
   --copy-in login-controls/user:/etc/sudoers.d/ \
   --run-command 'chown -R root:root /etc/sudoers.d/' \
 
+# We must ensure a key is generated; init-crypto is idempotent if the key already exists.
+uv run pycomms/pycomms.py init-crypto
+
 customize_step setup-pycomms \
+  --install python3-cryptography \
   --run-command 'mkdir -p /opt/pycomms/' \
-  --copy-in pycomms/pycomms_server.py:/opt/pycomms/ \
+  --copy-in pycomms/pycomms.py:/opt/pycomms/ \
+  --copy-in crypto/pycomms-key:/opt/pycomms/ \
   --copy-in pycomms/pycomms-server.service:/etc/systemd/system/ \
   --run-command 'chown -R root:root /etc/systemd/system/' \
   --run-command 'systemctl enable pycomms-server.service' \
@@ -148,16 +153,7 @@ customize_step setup-nbd \
     --run-command 'cd /tmp/nbd-3.25 && make' \
     --run-command 'cd /tmp/nbd-3.25 && make install' \
     --run-command 'rm -rf /tmp/nbd-3.25 /tmp/nbd.tar.gz' \
-  --mkdir /usr/lib/dracut/modules.d/95nbdroot \
-  --upload ./boot-controls/95nbdroot_module-setup.sh:/usr/lib/dracut/modules.d/95nbdroot/module-setup.sh \
-  --upload ./boot-controls/95nbdroot_parse-nbdroot.sh:/usr/lib/dracut/modules.d/95nbdroot/parse-nbdroot.sh \
-  --upload ./boot-controls/95nbdroot_mount-nbdroot.sh:/usr/lib/dracut/modules.d/95nbdroot/mount-nbdroot.sh \
-  --upload ./boot-controls/95nbdroot_nbdroot.sh:/usr/lib/dracut/modules.d/95nbdroot/nbdroot.sh \
-  --chmod '0755:/usr/lib/dracut/modules.d/95nbdroot/module-setup.sh' \
-  --chmod '0755:/usr/lib/dracut/modules.d/95nbdroot/parse-nbdroot.sh' \
-  --chmod '0755:/usr/lib/dracut/modules.d/95nbdroot/mount-nbdroot.sh' \
-  --chmod '0755:/usr/lib/dracut/modules.d/95nbdroot/nbdroot.sh' \
-    --run-command 'echo "add_dracutmodules+=\" nbdroot network \"" > /etc/dracut.conf.d/90-nbd.conf' \
+    --run-command 'echo "add_dracutmodules+=\" network nbd \"" > /etc/dracut.conf.d/90-nbd.conf' \
     --run-command 'echo "add_drivers+=\" nbd \"" >> /etc/dracut.conf.d/90-nbd.conf' \
     --run-command 'echo "hostonly=no" >> /etc/dracut.conf.d/90-nbd.conf' \
   --run-command 'for kver in $(rpm -q kernel --qf "%{VERSION}-%{RELEASE}.%{ARCH}\n"); do dracut -f /boot/initramfs-${kver}.img ${kver} || exit 1; done' \

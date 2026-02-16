@@ -627,7 +627,7 @@ set default=0
 
 menuentry "Boot from Network (NBD)" {{
     echo "Loading kernel..."
-    linux (tftp)/vmlinuz root=/dev/nbd0p4 rw nbdroot={self.server_ip}:{NBD_PORT} netroot=nbd:{self.server_ip}:{NBD_PORT} ip=dhcp rd.neednet=1 rd.debug
+    linux (tftp)/vmlinuz root=/dev/nbd0p4 rw netroot=nbd:{self.server_ip}:{NBD_PORT} ip=dhcp rd.neednet=1 rd.debug
     echo "Loading initramfs..."
     initrd (tftp)/initrd.img
     echo "Booting..."
@@ -650,7 +650,7 @@ LABEL centos-nbd
     MENU LABEL Boot CentOS Stream 9 from NBD
     MENU DEFAULT
     KERNEL vmlinuz
-    APPEND initrd=initrd.img root=/dev/nbd0p4 rw nbdroot={self.server_ip}:{NBD_PORT} netroot=nbd:{self.server_ip}:{NBD_PORT} ip=dhcp rd.neednet=1 rd.debug
+    APPEND initrd=initrd.img root=/dev/nbd0p4 rw netroot=nbd:{self.server_ip}:{NBD_PORT} ip=dhcp rd.neednet=1 rd.debug
     TEXT HELP
     Boot CentOS Stream 9 from network block device
     ENDTEXT
