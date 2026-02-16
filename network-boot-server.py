@@ -323,25 +323,28 @@ class DHCPServer:
                 mac_str = ':'.join(f'{b:02x}' for b in client_mac)
 
                 if parsed['msg_type'] == self.DHCPDISCOVER:
-                    vendor = parsed.get('vendor_class', b'').decode('ascii', errors='ignore')
+                    vendor_class_bytes = parsed.get('vendor_class')
+                    vendor = vendor_class_bytes.decode('ascii', errors='ignore') if vendor_class_bytes else ''
                     client_arch = parsed.get('client_arch')
 
                     logger.info(f"DHCP DISCOVER from {mac_str}")
                     if vendor:
                         logger.info(f"  Vendor Class: {vendor}")
 
-                    # Only respond to PXE clients
+                    # Check if this is a PXE client
                     is_pxe = vendor and 'PXEClient' in vendor
-                    if not is_pxe:
-                        logger.info(f"  Not a PXE client - ignoring")
-                        continue
 
-                    if client_arch is not None:
-                        logger.info(f"  Client Architecture: {client_arch} ({self._get_arch_name(client_arch)})")
+                    if is_pxe:
+                        logger.info(f"  → PXE boot request")
+                        if client_arch is not None:
+                            logger.info(f"  Client Architecture: {client_arch} ({self._get_arch_name(client_arch)})")
 
-                    # Determine bootloader based on architecture
-                    bootfile = self._get_bootfile_for_arch(client_arch)
-                    logger.info(f"  Selected bootloader: {bootfile}")
+                        # Determine bootloader based on architecture
+                        bootfile = self._get_bootfile_for_arch(client_arch)
+                        logger.info(f"  Selected bootloader: {bootfile}")
+                    else:
+                        logger.info(f"  → Regular DHCP request (likely initramfs network setup)")
+                        bootfile = None  # No bootfile for regular DHCP
 
                     # Check if client already has an IP (ProxyDHCP mode)
                     client_has_ip = data[12:16] != b'\x00\x00\x00\x00'  # ciaddr field
@@ -361,26 +364,38 @@ class DHCPServer:
                         client_mac,
                         client_ip,
                         self.DHCPOFFER,
-                        bootfile
+                        bootfile or ''  # Empty string for non-PXE DHCP
                     )
 
                     try:
                         bytes_sent = self.sock.sendto(response, ('<broadcast>', self.DHCP_CLIENT_PORT))
                         logger.info(f"DHCP OFFER sent to {mac_str}: {client_ip} ({bytes_sent} bytes)")
-                        logger.info(f"  Next server: {self.server_ip}")
-                        logger.info(f"  Boot file: {bootfile}")
+                        if bootfile:
+                            logger.info(f"  Next server: {self.server_ip}")
+                            logger.info(f"  Boot file: {bootfile}")
+                        else:
+                            logger.info(f"  (No boot file - regular DHCP)")
                     except Exception as send_error:
                         logger.error(f"Failed to send DHCP OFFER: {send_error}")
                         import traceback
                         traceback.print_exc()
 
                 elif parsed['msg_type'] == self.DHCPREQUEST:
+                    vendor_class_bytes = parsed.get('vendor_class')
+                    vendor = vendor_class_bytes.decode('ascii', errors='ignore') if vendor_class_bytes else ''
+                    is_pxe = vendor and 'PXEClient' in vendor
+
                     logger.info(f"DHCP REQUEST from {mac_str}")
                     client_ip = self._allocate_ip(client_mac)
 
-                    # Get architecture for bootfile
-                    client_arch = parsed.get('client_arch')
-                    bootfile = self._get_bootfile_for_arch(client_arch)
+                    # Get architecture for bootfile (only for PXE)
+                    if is_pxe:
+                        client_arch = parsed.get('client_arch')
+                        bootfile = self._get_bootfile_for_arch(client_arch)
+                        logger.info(f"  → PXE boot ACK")
+                    else:
+                        bootfile = ''
+                        logger.info(f"  → Regular DHCP ACK")
 
                     response = self._build_dhcp_packet(
                         parsed['transaction_id'],
