@@ -30,6 +30,8 @@ IFACE_IP=172.16.172.1 uv run pycomms/pycomms.py status
 
 clear ; sudo tcpdump -i eth0 -s0 -vv -A host 239.255.42.99 and udp
 
+IFACE_IP=172.16.172.1 uv run pycomms/pycomms.py cmd sudo shutdown now
+
 ```
 
 # Docs
