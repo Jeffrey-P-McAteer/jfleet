@@ -161,7 +161,7 @@ customize_step setup-nbd \
 
 customize_step tweak-firewall \
   --run-command 'mkdir -p /etc/firewalld/zones/' \
-  --copy-in pycomms/firewalld-pycomms-config.xml:/etc/firewalld/zones/ \
+  --copy-in pycomms/pycomms-fw.xml:/etc/firewalld/zones/ \
 
 #$ echo 'abc'\''123'
 #  abc'123
