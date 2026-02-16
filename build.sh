@@ -136,7 +136,7 @@ customize_step create-user \
 uv run pycomms/pycomms.py init-crypto
 
 customize_step setup-pycomms \
-  --install python3-cryptography \
+  --install python3-cryptography,python3-netifaces \
   --run-command 'mkdir -p /opt/pycomms/' \
   --copy-in pycomms/pycomms.py:/opt/pycomms/ \
   --copy-in crypto/pycomms-key:/opt/pycomms/ \

@@ -3,6 +3,7 @@
 # requires-python = ">=3.12"
 # dependencies = [
 #   "cryptography",
+#   "netifaces",
 # ]
 # ///
 
@@ -13,6 +14,7 @@ import os
 import fcntl
 import traceback
 import sys
+import subprocess
 
 # We use "uv" on dev machine, and the server has python3-cryptography installed.
 import cryptography
@@ -30,7 +32,7 @@ from cryptography.fernet import Fernet
 
 MCAST_GRP = "239.255.42.99"
 MCAST_PORT = 50000
-BUF_SIZE = 4 * 1024
+BUF_SIZE = 16 * 1024
 
 def get_primary_interface():
     """Determine primary interface by routing table"""
@@ -194,30 +196,62 @@ def main_client(args):
             print(f'Already exists: {key_file}')
 
     else:
+        import netifaces
+
         fernet = load_existing_pycomms_keyfile()
         message = json.dumps(args)
         message = message.encode('utf-8')
         ciphertext = fernet.encrypt(message)
 
         # Send all args to multicast, print replies for 2s
+        explicit_iface_ip = os.environ.get('IFACE_IP', None)
 
         # Receiver socket
         rx = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
         rx.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        rx.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_LOOP, 1)
         rx.bind(("", MCAST_PORT))
 
-        mreq = struct.pack(
-            "4sl", socket.inet_aton(MCAST_GRP), socket.INADDR_ANY
-        )
+        if explicit_iface_ip:
+            mreq = struct.pack(
+                "4s4s", socket.inet_aton(MCAST_GRP), socket.inet_aton(explicit_iface_ip)
+            )
+        else:
+            mreq = struct.pack(
+                "4s4s", socket.inet_aton(MCAST_GRP), socket.inet_aton("0.0.0.0")
+            )
         rx.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
-        rx.settimeout(4)  # 4 second timeout
+
+        rx.settimeout(int(os.environ.get('TIMEOUT_S', '6')))  # 6 second timeout
 
         # Transmit socket
         tx = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
         tx.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 1)
 
-        # Perform command TX
-        tx.sendto(ciphertext, (MCAST_GRP, MCAST_PORT))
+        # Enumerate all interfaces & transmit ciphertext
+        for iface in netifaces.interfaces():
+            if str(iface) == 'lo':
+                continue
+
+            addrs = netifaces.ifaddresses(iface)
+            if netifaces.AF_INET in addrs:
+                for addr_info in addrs[netifaces.AF_INET]:
+                    iface_ip = addr_info['addr']
+                    if explicit_iface_ip:
+                        if not explicit_iface_ip.casefold() == iface_ip.casefold():
+                            continue
+                    try:
+                        # Set outgoing interface for multicast
+                        tx.setsockopt(
+                            socket.IPPROTO_IP,
+                            socket.IP_MULTICAST_IF,
+                            socket.inet_aton(iface_ip)
+                        )
+                        # Send packet
+                        tx.sendto(ciphertext, (MCAST_GRP, MCAST_PORT))
+                        print(f"Sent on {iface} ({iface_ip})")
+                    except Exception as e:
+                        print(f"Failed on {iface} ({iface_ip}): {e}")
 
         # Listen for replies
         try:
@@ -238,9 +272,9 @@ def main_client(args):
                         pass
 
                     if isinstance(reply, str):
-                        print(f'{addr}> {reply}')
+                        print(f'{addr[0]}:{addr[1]} > {reply}')
                     else:
-                        print(f'{addr}> {json.dumps(reply, indent=2)}')
+                        print(f'{addr[0]}:{addr[1]} > {json.dumps(reply, indent=2)}')
                 except:
                     traceback.print_exc() # Likely bad encryption
         except:
