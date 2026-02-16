@@ -90,7 +90,7 @@ def do_cmd(cmd):
             }
 
 def run_cli_cmd(args):
-    return subprocess.check_output(args, text=True).output
+    return subprocess.check_output(args, text=True)
 
 def main_server():
     # Receiver socket
