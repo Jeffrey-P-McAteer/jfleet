@@ -15,7 +15,7 @@ cmdline() {
 install() {
     inst_hook cmdline 30 "$moddir/parse-nbdroot.sh"
     inst_hook pre-mount 30 "$moddir/mount-nbdroot.sh"
-    inst_multiple nbd-client modprobe mknod cat grep sleep dd blockdev
+    inst_multiple nbd-client modprobe mknod cat grep sleep dd blockdev ping
     inst_simple "$moddir/nbdroot.sh" /sbin/nbdroot
 }
 
