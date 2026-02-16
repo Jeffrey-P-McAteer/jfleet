@@ -148,80 +148,21 @@ customize_step setup-nbd \
     --run-command 'cd /tmp/nbd-3.25 && make' \
     --run-command 'cd /tmp/nbd-3.25 && make install' \
     --run-command 'rm -rf /tmp/nbd-3.25 /tmp/nbd.tar.gz' \
-  --run-command 'echo "nbd" > /etc/modules-load.d/nbd.conf' \
-  --run-command 'echo "options nbd max_part=16" > /etc/modprobe.d/nbd.conf' \
-  --run-command 'echo "add_dracutmodules+=\" network \"" > /etc/dracut.conf.d/90-nbd.conf' \
-  --run-command 'echo "add_drivers+=\" nbd \"" >> /etc/dracut.conf.d/90-nbd.conf' \
-  --run-command 'echo "install_items+=\" /usr/bin/nbd-client /usr/sbin/nbd-client \"" >> /etc/dracut.conf.d/90-nbd.conf' \
-  --run-command 'echo "hostonly=no" >> /etc/dracut.conf.d/90-nbd.conf' \
-  --run-command 'echo "kernel_cmdline+=\" rd.neednet=1 rd.debug \"" >> /etc/dracut.conf.d/90-nbd.conf' \
   --run-command 'mkdir -p /usr/lib/dracut/hooks/pre-mount' \
-  --write '/usr/lib/dracut/hooks/pre-mount/30-nbd-mount.sh:#!/bin/sh
-# NBD root mount hook for dracut
-# Load dracut command line library
-type getarg >/dev/null 2>&1 || . /lib/dracut-lib.sh
-
-# Parse nbdroot from kernel cmdline
-nbdroot=$(getarg nbdroot=)
-
-if [ -z "$nbdroot" ]; then
-    # Also check /proc/cmdline directly as fallback
-    for param in $(cat /proc/cmdline); do
-        case "$param" in
-            nbdroot=*)
-                nbdroot="${param#nbdroot=}"
-                break
-                ;;
-        esac
-    done
-fi
-
-if [ -n "$nbdroot" ]; then
-    server="${nbdroot%:*}"
-    port="${nbdroot##*:}"
-
-    echo "NBD: Connecting to $server:$port" >> /dev/kmsg
-
-    # Load NBD module
-    modprobe nbd max_part=16
-    sleep 2
-
-    # Wait for network to be up
-    i=0
-    while [ $i -lt 30 ]; do
-        if ip route | grep -q default; then
-            echo "NBD: Network is up" >> /dev/kmsg
-            break
-        fi
-        sleep 1
-        i=$((i + 1))
-    done
-
-    # Use nbd-client to connect
-    echo "NBD: Running nbd-client $server $port /dev/nbd0" >> /dev/kmsg
-    nbd-client "$server" "$port" /dev/nbd0 -persist
-
-    sleep 3
-
-    if [ -b /dev/nbd0 ]; then
-        echo "NBD: /dev/nbd0 is available" >> /dev/kmsg
-        ls -l /dev/nbd0 >> /dev/kmsg 2>&1
-    else
-        echo "NBD: ERROR - /dev/nbd0 not found!" >> /dev/kmsg
-    fi
-else
-    echo "NBD: No nbdroot parameter found in cmdline" >> /dev/kmsg
-fi
-' \
-    --chmod '0755:/usr/lib/dracut/hooks/pre-mount/30-nbd-mount.sh' \
-    --run-command 'for kver in $(rpm -q kernel --qf "%{VERSION}-%{RELEASE}.%{ARCH}\n"); do dracut -f --no-hostonly /boot/initramfs-${kver}.img ${kver} || exit 1; done' \
-    --run-command 'kver=$(rpm -q kernel --qf "%{VERSION}-%{RELEASE}.%{ARCH}\n" | head -1); if lsinitrd /boot/initramfs-${kver}.img | grep -q nbd-client; then echo "✓ nbd-client found in initramfs"; else echo "✗ nbd-client NOT in initramfs"; exit 1; fi' \
+  --copy-in boot-controls/30-nbd-mount.sh:'/usr/lib/dracut/hooks/pre-mount/' \
+  --run-command 'chown -R root:root /usr/lib/dracut/hooks/pre-mount/' \
+  --chmod '0755:/usr/lib/dracut/hooks/pre-mount/30-nbd-mount.sh' \
+    --run-command 'echo "nbd" > /etc/modules-load.d/nbd.conf' \
+    --run-command 'echo "options nbd max_part=16" > /etc/modprobe.d/nbd.conf' \
+    --run-command 'echo "add_dracutmodules+=\" network \"" > /etc/dracut.conf.d/90-nbd.conf' \
+    --run-command 'echo "add_drivers+=\" nbd \"" >> /etc/dracut.conf.d/90-nbd.conf' \
+    --run-command 'echo "install_items+=\" /usr/bin/nbd-client /usr/sbin/nbd-client /usr/lib/dracut/hooks/pre-mount/30-nbd-mount.sh \"" >> /etc/dracut.conf.d/90-nbd.conf' \
+    --run-command 'echo "hostonly=no" >> /etc/dracut.conf.d/90-nbd.conf' \
+    --run-command 'echo "kernel_cmdline+=\" rd.neednet=1 rd.debug \"" >> /etc/dracut.conf.d/90-nbd.conf' \
+  --run-command 'for kver in $(rpm -q kernel --qf "%{VERSION}-%{RELEASE}.%{ARCH}\n"); do dracut -f --no-hostonly /boot/initramfs-${kver}.img ${kver} || exit 1; done' \
+  --run-command 'kver=$(rpm -q kernel --qf "%{VERSION}-%{RELEASE}.%{ARCH}\n" | head -1); if lsinitrd /boot/initramfs-${kver}.img | grep -q nbd-client; then echo "✓ nbd-client found in initramfs"; else echo "✗ nbd-client NOT in initramfs"; exit 1; fi' \
 
 
-
-
-#for kver in $(rpm -q kernel --qf "%{VERSION}-%{RELEASE}.%{ARCH}\n"); do echo dracut --force --add "network nbd" /boot/initramfs-${kver}.img ${kver}; done
-#dracut --force --add "network nbd" /boot/initramfs-5.14.0-71.el9.x86_64.img 5.14.0-71.el9.x86_64
 
 
 
