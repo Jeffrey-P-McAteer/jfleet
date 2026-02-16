@@ -163,6 +163,12 @@ customize_step setup-nbd \
   --run-command 'for kver in $(rpm -q kernel --qf "%{VERSION}-%{RELEASE}.%{ARCH}\n"); do dracut -f /boot/initramfs-${kver}.img ${kver} || exit 1; done' \
   --run-command 'kver=$(rpm -q kernel --qf "%{VERSION}-%{RELEASE}.%{ARCH}\n" | head -1); if lsinitrd /boot/initramfs-${kver}.img | grep -q nbd-client; then echo "✓ nbd-client found in initramfs"; else echo "✗ nbd-client NOT in initramfs"; exit 1; fi' \
 
+customize_step tweak-firewall \
+  --run-command 'sudo firewall-cmd --permanent --add-rich-rule='\''rule family="ipv4" destination address="224.0.0.0/4" accept'\' \
+
+#$ echo 'abc'\''123'
+#  abc'123
+
 
 
 

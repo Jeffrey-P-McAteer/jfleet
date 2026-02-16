@@ -7,8 +7,11 @@ import os
 import fcntl
 import traceback
 
-# Simple client:
+# Simple recieve client:
 #    socat - UDP4-DATAGRAM:239.255.42.99:50000,bind=:50000,ip-add-membership=239.255.42.99:0.0.0.0,reuseaddr
+# Simple send-commands client:
+#    socat - UDP4-DATAGRAM:239.255.42.99:50000,ip-multicast-if=172.16.172.1,ip-multicast-ttl=1 <<<"status"
+
 
 MCAST_GRP = "239.255.42.99"
 MCAST_PORT = 50000
