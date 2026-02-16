@@ -109,6 +109,7 @@ customize_step systemd-adjustments \
   --run-command 'dnf --noplugins remove -y -q subscription-manager dnf-plugin-subscription-manager' \
   --run-command 'printf "SELINUX=disabled\nSELINUXTYPE=targeted\n" > /etc/selinux/config' \
   --run-command 'rm -f /.autorelabel /etc/selinux/.autorelabel || true' \
+  --run-command 'systemctl disable sshd' \
   --run-command 'sync'
 
 customize_step install-packages --install vim,git,bash-completion,python,socat
@@ -144,6 +145,10 @@ customize_step setup-pycomms \
   --run-command 'chown -R root:root /etc/systemd/system/' \
   --run-command 'systemctl enable pycomms-server.service' \
 
+customize_step tweak-firewall \
+  --run-command 'firewall-offline-cmd --zone=public --add-rich-rule="rule family=ipv4 port port=50000 protocol=udp accept"' \
+  --run-command 'firewall-offline-cmd --zone=public --add-rich-rule="rule family=ipv4 destination address=224.0.0.0/4 accept"' \
+
 customize_step setup-nbd \
   --install dracut-network,iproute,iputils \
   --install tar,bison,gcc,make,glib2-devel,libnl3-devel \
@@ -159,9 +164,6 @@ customize_step setup-nbd \
   --run-command 'for kver in $(rpm -q kernel --qf "%{VERSION}-%{RELEASE}.%{ARCH}\n"); do dracut -f /boot/initramfs-${kver}.img ${kver} || exit 1; done' \
   --run-command 'kver=$(rpm -q kernel --qf "%{VERSION}-%{RELEASE}.%{ARCH}\n" | head -1); if lsinitrd /boot/initramfs-${kver}.img | grep -q nbd-client; then echo "✓ nbd-client found in initramfs"; else echo "✗ nbd-client NOT in initramfs"; exit 1; fi' \
 
-customize_step tweak-firewall \
-  --run-command 'mkdir -p /etc/firewalld/zones/' \
-  --copy-in pycomms/pycomms-fw.xml:/etc/firewalld/zones/ \
 
 #$ echo 'abc'\''123'
 #  abc'123
