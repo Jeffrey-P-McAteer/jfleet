@@ -149,10 +149,10 @@ customize_step setup-nbd \
     --run-command 'cd /tmp/nbd-3.25 && make install' \
     --run-command 'rm -rf /tmp/nbd-3.25 /tmp/nbd.tar.gz' \
   --mkdir /usr/lib/dracut/modules.d/95nbdroot \
-  --upload /tmp/module-setup.sh:/usr/lib/dracut/modules.d/95nbdroot/module-setup.sh \
-  --upload /tmp/parse-nbdroot.sh:/usr/lib/dracut/modules.d/95nbdroot/parse-nbdroot.sh \
-  --upload /tmp/mount-nbdroot.sh:/usr/lib/dracut/modules.d/95nbdroot/mount-nbdroot.sh \
-  --upload /tmp/nbdroot.sh:/usr/lib/dracut/modules.d/95nbdroot/nbdroot.sh \
+  --upload ./boot-controls/95nbdroot_module-setup.sh:/usr/lib/dracut/modules.d/95nbdroot/module-setup.sh \
+  --upload ./boot-controls/95nbdroot_parse-nbdroot.sh:/usr/lib/dracut/modules.d/95nbdroot/parse-nbdroot.sh \
+  --upload ./boot-controls/95nbdroot_mount-nbdroot.sh:/usr/lib/dracut/modules.d/95nbdroot/mount-nbdroot.sh \
+  --upload ./boot-controls/95nbdroot_nbdroot.sh:/usr/lib/dracut/modules.d/95nbdroot/nbdroot.sh \
   --chmod '0755:/usr/lib/dracut/modules.d/95nbdroot/module-setup.sh' \
   --chmod '0755:/usr/lib/dracut/modules.d/95nbdroot/parse-nbdroot.sh' \
   --chmod '0755:/usr/lib/dracut/modules.d/95nbdroot/mount-nbdroot.sh' \
