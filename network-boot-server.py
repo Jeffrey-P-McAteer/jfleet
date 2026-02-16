@@ -621,13 +621,13 @@ configfile (tftp)/grub.cfg
             return False
 
     def create_grub_config(self):
-        """Create GRUB configuration for UEFI boot"""
-        grub_config = f"""set timeout=5
+        """Create GRUB configuration for UEFI boot - we use /dev/nbd0p4 because p4 is the centosstream-9 root partition, it defaults to an LVM configuration."""
+        grub_config = f"""set timeout=4
 set default=0
 
 menuentry "Boot from Network (NBD)" {{
     echo "Loading kernel..."
-    linux (tftp)/vmlinuz root=/dev/nbd0 rw nbdroot={self.server_ip}:{NBD_PORT} netroot=nbd:{self.server_ip}:{NBD_PORT} ip=dhcp rd.neednet=1 rd.debug
+    linux (tftp)/vmlinuz root=/dev/nbd0p4 rw nbdroot={self.server_ip}:{NBD_PORT} netroot=nbd:{self.server_ip}:{NBD_PORT} ip=dhcp rd.neednet=1 rd.debug
     echo "Loading initramfs..."
     initrd (tftp)/initrd.img
     echo "Booting..."
@@ -642,7 +642,7 @@ menuentry "Boot from Network (NBD)" {{
         """Create PXE boot configuration"""
         config = f"""DEFAULT menu.c32
 PROMPT 0
-TIMEOUT 100
+TIMEOUT 6
 
 MENU TITLE Network Boot Menu
 
@@ -650,7 +650,7 @@ LABEL centos-nbd
     MENU LABEL Boot CentOS Stream 9 from NBD
     MENU DEFAULT
     KERNEL vmlinuz
-    APPEND initrd=initrd.img root=/dev/nbd0 ip=dhcp nbdroot={self.server_ip}:{NBD_PORT} rd.neednet=1 rd.debug
+    APPEND initrd=initrd.img root=/dev/nbd0p4 rw nbdroot={self.server_ip}:{NBD_PORT} netroot=nbd:{self.server_ip}:{NBD_PORT} ip=dhcp rd.neednet=1 rd.debug
     TEXT HELP
     Boot CentOS Stream 9 from network block device
     ENDTEXT
