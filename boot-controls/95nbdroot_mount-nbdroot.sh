@@ -1,6 +1,9 @@
 #!/bin/sh
 # Mount NBD root device
 
+# Source dracut library for info/warn functions
+type info >/dev/null 2>&1 || . /lib/dracut-lib.sh
+
 if [ ! -f /tmp/nbdroot.info ]; then
     exit 0
 fi

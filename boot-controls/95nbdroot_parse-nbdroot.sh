@@ -1,4 +1,8 @@
 #!/bin/sh
+
+# Source dracut library for getarg function
+type getarg >/dev/null 2>&1 || . /lib/dracut-lib.sh
+
 # Parse nbdroot= parameter
 
 [ -z "$root" ] && root=$(getarg root=)
