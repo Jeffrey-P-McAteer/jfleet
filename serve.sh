@@ -17,5 +17,7 @@ if [[ "$VM_IMG_EXT" = "qcow2" ]] ; then
 fi
 echo "$VM_IMAGE is assumed to be in $VM_IMG_FMT format."
 
+sudo rm -rf /tmp/pxeboot || true
+
 sudo uv run network-boot-server.py eth0 "$VM_IMAGE"
 
