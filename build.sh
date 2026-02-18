@@ -79,7 +79,8 @@ fi
 
 customize_step() {
   STEP_NAME="$1"
-  FLAG_FILE="$OUT_DIR/completed/$STEP_NAME"
+  STEP_SHA2_HASH=$(printf '%s' "$*" | sha256sum | awk '{print $1}') # "$*" contains all args
+  FLAG_FILE="$OUT_DIR/completed/$STEP_NAME-$STEP_SHA2_HASH"
   if [[ -e "$FLAG_FILE" ]] ; then
     source "$FLAG_FILE"
     echo "Step $(printf "%-26.26s" $STEP_NAME) completed with a $(printf "%-7.7s" $(fmt_size $STEP_SIZE_INCREASE_KB)) storage size increase, skipping (task took $(fmt_secs $RUNTIME_TOTAL_S))"
@@ -165,8 +166,6 @@ customize_step setup-nbd \
   --run-command 'kver=$(rpm -q kernel --qf "%{VERSION}-%{RELEASE}.%{ARCH}\n" | head -1); if lsinitrd /boot/initramfs-${kver}.img | grep -q nbd-client; then echo "✓ nbd-client found in initramfs"; else echo "✗ nbd-client NOT in initramfs"; exit 1; fi' \
 
 
-#$ echo 'abc'\''123'
-#  abc'123
 
 
 
